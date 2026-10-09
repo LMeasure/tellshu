@@ -1,0 +1,51 @@
+{
+  "name": "shushu-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/test_features.ts && tsx scripts/test_data_client.ts && tsx scripts/test_storage.ts && tsx scripts/test_services.ts && tsx scripts/test_learning_loop.ts && tsx scripts/test_readings.ts && tsx scripts/test_review_quiz.ts && tsx scripts/test_bilingual.ts && tsx scripts/test_reader_v2.ts && tsx scripts/test_fitpaging.ts && tsx scripts/test_word_detail.ts && tsx scripts/test_sync.ts",
+    "test:features": "tsx scripts/test_features.ts",
+    "test:data": "tsx scripts/test_data_client.ts",
+    "test:storage": "tsx scripts/test_storage.ts",
+    "test:services": "tsx scripts/test_services.ts",
+    "check:pwa": "python scripts/check_pwa.py",
+    "check:data": "python scripts/verify_data.py --base http://localhost:4173/data/linguabase/v1/",
+    "check:review": "tsx scripts/check_review_chain.ts http://127.0.0.1:4174",
+    "test:review-quiz": "tsx scripts/test_review_quiz.ts",
+    "test:bilingual": "tsx scripts/test_bilingual.ts",
+    "test:reader-v2": "tsx scripts/test_reader_v2.ts",
+    "test:word-detail": "tsx scripts/test_word_detail.ts"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "compromise": "^14.17.0",
+    "dexie": "^4.4.6",
+    "jszip": "^3.10.2",
+    "lucide-react": "^0.439.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "tailwind-merge": "^2.5.2",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "fake-indexeddb": "^6.2.5",
+    "postcss": "^8.4.41",
+    "tailwindcss": "^3.4.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.5",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}

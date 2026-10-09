@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+dist
+node_modules
+data
+*.log
+
+# 抓取原始缓存（含公有领域书籍全文 + manifest），只作为本地中间产物，绝不进 git
+.crawl-cache/
+
+# 检索 A/B 评估的本地中间结果（报告里的数字才是交付物，原始 JSON 不进 git）
+.eval-*.json
+
+# 一次性诊断探针（.tmp-*.py）与 A/B 对比文本输出，用完即删，不进 git
+.tmp-*.py
+.ab-compare.txt
+
+# 候选书单生成的中间产物（原始 JSON / 日志；交付物是 Markdown 书单文档）
+.candidate-plan.json
+.candidate-plan.log

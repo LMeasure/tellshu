@@ -1,0 +1,521 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  设计令牌 —— 绿色多巴胺系（主色 ≤2 + 强调色 1）
+  主色：薄荷绿/草绿（活力、生机）
+  辅助：沉稳深绿（层次）
+  强调：高饱和暖色（亮黄/珊瑚橙）—— 承载「对 / 奖励 / CTA」
+*/
+@layer base {
+  :root {
+    --background: 150 36% 97%;
+    --foreground: 162 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 162 30% 12%;
+    --primary: 152 56% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 150 34% 90%;
+    --secondary-foreground: 162 32% 18%;
+    --accent: 33 96% 54%;
+    --accent-foreground: 162 40% 12%;
+    --muted: 150 22% 93%;
+    --muted-foreground: 162 12% 42%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 150 24% 86%;
+    --input: 150 24% 86%;
+    --ring: 152 56% 40%;
+    --radius: 1rem;
+    /* 乳白：单词详情页树冠内容区（EasyMad 渐变下的承托底色） */
+    --cream: 42 45% 97%;
+  }
+
+  .dark {
+    --background: 162 28% 9%;
+    --foreground: 150 24% 92%;
+    --card: 162 24% 13%;
+    --card-foreground: 150 24% 92%;
+    --primary: 150 58% 48%;
+    --primary-foreground: 162 40% 10%;
+    --secondary: 162 20% 22%;
+    --secondary-foreground: 150 24% 88%;
+    --accent: 38 96% 58%;
+    --accent-foreground: 162 40% 10%;
+    --muted: 162 18% 20%;
+    --muted-foreground: 150 14% 64%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 162 18% 24%;
+    --input: 162 18% 24%;
+    --ring: 150 58% 48%;
+    --cream: 150 14% 13%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-muted text-foreground antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+}
+
+@layer components {
+  /* 移动端 375px 优先：居中的「手机框」，桌面端两侧留白模拟真机 */
+  .app-frame {
+    @apply mx-auto w-full max-w-app min-h-full bg-background shadow-soft;
+  }
+
+  /* 安全区适配（刘海 / 底部 home 条） */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* 触摸目标最小 44px，符合移动端可点击规范 */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* 弹窗内紧凑按钮（划词浮窗等空间紧张处）：36px */
+  .touch-target-sm {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  /* 底部弹层滑入动画 */
+  @keyframes slide-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  .animate-slide-up {
+    animation: slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* 全局滚动条（细绿条，移动端可见）—— 满足「内置滚动条」 */
+  .app-frame main {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary)) transparent;
+  }
+  .app-frame main::-webkit-scrollbar {
+    width: 6px;
+  }
+  .app-frame main::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.5);
+    border-radius: 9999px;
+  }
+  .app-frame main::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* 阅读器 / 记忆面板独立滚动条 */
+  .reader-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary)) transparent;
+  }
+  .reader-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .reader-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.5);
+    border-radius: 9999px;
+  }
+
+  /* 记忆模式：隐藏底本里的单词（灰色填空线） */
+  .memo-blank {
+    color: hsl(var(--muted-foreground) / 0.45);
+    letter-spacing: 2px;
+  }
+
+  /* 记忆模式：默写错误的词标红 */
+  .memo-wrong {
+    @apply font-semibold text-destructive;
+    background: hsl(var(--destructive) / 0.12);
+    border-radius: 3px;
+  }
+
+  /* 书架卡片 */
+  .shelf-card {
+    @apply rounded-xl bg-card p-2 text-left shadow-soft;
+  }
+}
+
+/* ===== 完成庆祝：烟花绽放（学习页完成弹窗，纯 CSS，无第三方库） ===== */
+/* 舞台：全屏覆盖但完全不挡交互 */
+.fw-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* 每朵烟花：一个贴底的定位点，宽高为 0 只用来放坐标 */
+.fw-rocket {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 0;
+}
+/* 上升亮点：从屏幕底升到绽放高度 */
+.fw-dot {
+  position: absolute;
+  bottom: 0;
+  left: -2px;
+  width: 4px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(to top, rgb(69 182 73 / 0.9), rgb(220 227 91 / 0.15));
+  opacity: 0;
+  animation: fw-rise 0.62s ease-out both;
+}
+/* 绽放中心：静态定位在上升终点；--d 为起爆时刻，--color 为本朵颜色 */
+.fw-burst {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  transform: translateY(var(--rise, -46vh));
+}
+/* 绽放瞬间的中心光晕 */
+.fw-burst::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.95), var(--color, #45b649) 55%, transparent 75%);
+  opacity: 0;
+  animation: fw-pop 0.5s ease-out both;
+  animation-delay: var(--d, 0s);
+}
+/* 粒子：从中心沿 --angle 飞出 --dist 距离后淡出 */
+.fw-p {
+  position: absolute;
+  left: -2.5px;
+  top: -2.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color, #45b649);
+  box-shadow: 0 0 6px rgb(255 255 255 / 0.55);
+  opacity: 0;
+  animation: fw-fly 1.15s cubic-bezier(0.16, 0.84, 0.44, 1) both;
+  animation-delay: var(--d, 0s);
+}
+@keyframes fw-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(var(--rise, -46vh));
+    opacity: 0;
+  }
+}
+@keyframes fw-pop {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@keyframes fw-fly {
+  0% {
+    transform: rotate(var(--angle, 0deg)) translateY(0) scale(0.5);
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--angle, 0deg)) translateY(var(--dist, 80px)) scale(0.25);
+    opacity: 0;
+  }
+}
+/* 系统开了「减少动态效果」就不放烟花 */
+@media (prefers-reduced-motion: reduce) {
+  .fw-stage {
+    display: none;
+  }
+}
+
+/* ===== 阅读器主题（2026-10-07 需求 4「颜色背景」面板） =====
+   四套阅读主题各自带 --rbg（页面底）/ --rfg（正文字）/ --rsecondary（次要文字）。
+   只作用于阅读器内容区，不碰全局深色模式。 */
+.reader-surface {
+  background: var(--rbg);
+  color: var(--rfg);
+}
+.reader-surface .reader-muted {
+  color: var(--rsecondary);
+}
+.reader-theme-white {
+  --rbg: #ffffff;
+  --rfg: #1c221e;
+  --rsecondary: #5b6b62;
+}
+.reader-theme-sepia {
+  --rbg: #f5ecd8;
+  --rfg: #41372a;
+  --rsecondary: #8a7a5f;
+}
+.reader-theme-green {
+  --rbg: #dfe8d8;
+  --rfg: #2b3628;
+  --rsecondary: #64735f;
+}
+.reader-theme-dark {
+  --rbg: #16191b;
+  --rfg: #c9d2cc;
+  --rsecondary: #7d8a82;
+}
+
+/* ===== 阅读器翻页动画（V2.0：平滑=三页连排跟手；覆盖=整页盖上；仿书本=3D 翻出） =====
+   平滑模式：一条 300% 宽的三页轨道（上一页 / 当前页 / 下一页），
+   拖动时整条轨道平移，松手按位移吸附 —— 相邻页始终在场，视觉上连续无跳变。
+
+   V3.0 修复「覆盖翻页中途/结束后上一页内容短暂重叠、闪现」：
+     · 每个页面层必须有**完全不透明**的背景（reader 主题底色 var(--rbg)），
+       严禁 rgba 透明 —— 否则两层文字互相透出；
+     · z-index 严格分层：当前页 1，翻入页/翻出页 2，保证物理遮盖；
+     · 动画结束即由 JS 移除旧页 DOM（commit），不再残留。 */
+.page-flip-stage {
+  position: relative;
+  overflow: hidden;
+}
+.page-flip-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--rbg, #ffffff);
+}
+/* 一页即一屏：分页模式的页面层不滚动（内容按实测高度分页，天生适配） */
+.page-flip-layer.pf-fit {
+  overflow: hidden;
+}
+.pf-track {
+  display: flex;
+  height: 100%;
+  width: 300%;
+  will-change: transform;
+}
+.pf-track-page {
+  width: 33.3333%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--rbg, #ffffff);
+}
+/* 覆盖：新页连同纸张从右侧盖上来（当前页保持不动），旧页整体移出时同样带纸 */
+@keyframes pf-cover-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes pf-cover-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+.pf-cover-in { animation: pf-cover-in 0.32s cubic-bezier(0.25, 0.8, 0.35, 1) both; box-shadow: -8px 0 24px rgb(0 0 0 / 0.18); z-index: 2; }
+.pf-cover-out { animation: pf-cover-out 0.32s cubic-bezier(0.25, 0.8, 0.35, 1) both; box-shadow: -8px 0 24px rgb(0 0 0 / 0.18); z-index: 2; }
+/* 仿书本：当前页绕左缘翻出（3D），下一页在底下露出 */
+@keyframes pf-book-next {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(-180deg); }
+}
+@keyframes pf-book-prev {
+  from { transform: rotateY(-180deg); }
+  to { transform: rotateY(0deg); }
+}
+.pf-book-stage { perspective: 1600px; }
+.pf-book-next { animation: pf-book-next 0.4s ease-in-out both; transform-origin: left center; transform-style: preserve-3d; z-index: 2; backface-visibility: hidden; }
+.pf-book-prev { animation: pf-book-prev 0.4s ease-in-out both; transform-origin: left center; transform-style: preserve-3d; z-index: 2; }
+/* 系统减少动态效果：翻页直接切换 */
+@media (prefers-reduced-motion: reduce) {
+  .pf-cover-in, .pf-cover-out, .pf-book-next, .pf-book-prev {
+    animation-duration: 0.01s;
+  }
+}
+
+/* ===== 设置面板滑杆（需求 4：字号 / 行距 / 亮度） ===== */
+input[type='range'].range-primary {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type='range'].range-primary::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--secondary));
+}
+input[type='range'].range-primary::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  border: 3px solid white;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+input[type='range'].range-primary::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--secondary));
+}
+input[type='range'].range-primary::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  border: 3px solid white;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+
+/* ===== 书签柳条（需求 6）：从顶部垂下的绿色柳叶条 ===== */.bookmark-ribbon {
+  position: absolute;
+  top: 0;
+  width: 26px;
+  height: 96px;
+  z-index: 15;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.15));
+}
+/* 添加/移除时的垂下与收回动画 */
+@keyframes ribbon-drop {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+.bookmark-ribbon.animate {
+  animation: ribbon-drop 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+/* ===== 阅读器：非滚动模式不显示内置滚动条（需求：除上下滚动外不要滚动条） ===== */
+.reader-nobar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.reader-nobar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* ===== 分页正文（V3.0「一页即一屏」）=====
+   正文撑满页面层、不显示滚动条：内容由「按实测高度分页」保证适配屏幕，
+   严禁上下滑动，翻页只走左右。 */
+.reader-page {
+  height: 100%;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+.reader-page::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* 隐藏测量探针（用于按真实高度分页，绝不显示给用户）
+   样式必须与正文 article 完全一致（whitespace-pre-wrap + break-words），
+   否则测出的高度与真实渲染不符，分页会溢出或被浪费。 */
+.measure-probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  z-index: -1;
+}
+
+/* ===== 阅读器文本选择：原生选择底色隐藏，改由自绘高亮（只染文字、不含行距） =====
+   自绘矩形由 Reader 用 range.getClientRects() 计算，纵向收紧到文字本体高度。 */
+.reader-surface ::selection {
+  background: transparent;
+}
+.reader-sel-hl {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  border-radius: 3px;
+  background: hsl(var(--primary) / 0.28);
+  transition: opacity 0.12s ease-out;
+}
+
+/* ===== 刻度滑杆（听书·定时关闭：关 / 30 / 60 / 90，15 / 45 为小刻度） =====
+   拇指本体透明（视觉由自绘气泡承担），但保留拖动热区。 */
+input[type='range'].tick-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type='range'].tick-range::-webkit-slider-runnable-track {
+  height: 36px;
+  background: transparent;
+}
+input[type='range'].tick-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+input[type='range'].tick-range::-moz-range-track {
+  height: 36px;
+  background: transparent;
+}
+input[type='range'].tick-range::-moz-range-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+}
+
+/* ===== 划线·波浪线（需求：密度调疏，参考设计图） =====
+   用稀疏周期的 SVG 波浪做下划背景，取代浏览器 text-decoration:wavy 的密集波纹。 */
+.ann-wavy {
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+  padding-bottom: 2px;
+}

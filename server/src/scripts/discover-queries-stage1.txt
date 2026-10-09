@@ -1,0 +1,15 @@
+# =============================================================================
+# Stage 1 固定验收 Query —— Stage 1.5 A/B 复用，不得更换、不得新增后混入基线
+#
+# 格式：<query>\t<期望命中的书名>（期望书名仅用于判定，不参与检索）
+# 以 # 开头或空行会被忽略
+#
+# 来源：Stage 1 完成报告第 7 节实际跑过的 6 条（A-1~A-3 / B-1~B-3）。
+# 说明：Stage 1 报告中记录的是 6 条，不是 8 条 —— 这里如实固化这 6 条。
+# =============================================================================
+拉斯柯尔尼科夫为了证明自己的理论而杀人，之后饱受良心折磨	Crime and Punishment
+一个家庭教师被雇去照顾一个孩子，住在阴森的大宅里	Jane Eyre
+关于爱情与阶级的英文小说	Pride and Prejudice
+Odysseus returns home and takes revenge on the suitors	The Odyssey
+two young lovers from feuding families die tragically	Romeo and Juliet
+a governess hired to teach a girl at a gloomy mansion called Thornfield	Jane Eyre
