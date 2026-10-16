@@ -118,7 +118,7 @@ def main() -> int:
       f"过滤口径：{b7['config']['filter']}")
     w("")
     w("**全程只读**：未改 postgresql.conf、未改 ef_search 默认值、未 REINDEX、"
-      "未写正式表、未提交 Git（§6 之前的动作）")
+      "未写正式表、未改 API / 前端。唯一的写操作是 §6 的产物入库（Git commit）。")
     w("")
     w("---")
     w("")
@@ -251,10 +251,10 @@ def main() -> int:
     st120 = stats_for("ef120-strict_order")
     w("| 分支条件 | 是否满足 |")
     w("|---|---|")
-    w(f"| ① ef=800 + strict_order 下 Top10 p > 0.05 | ❌ 不满足（p={st800['hit_top10']['p']}） |")
+    w(f"| ① ef=800 + strict_order 下 Top10 p > 0.05 | ❌ 不满足（p={st800['hit_top10']['p']:.4f}） |")
     w(f"| ② ef=800 Top10 仍 p<0.05 但 Δ 缩小 | ❌ Δ 未缩小（B.6 relaxed 就是 −9pp，"
       f"本轮 strict 仍是 {st800['hit_top10']['delta']}pp） |")
-    w(f"| ③ ef=120 Top1 p>0.05 且 Top10 Δ 显著缩小 | ❌ Top1 p={st120['hit_top1']['p']} 满足，"
+    w(f"| ③ ef=120 Top1 p>0.05 且 Top10 Δ 显著缩小 | ❌ Top1 p={st120['hit_top1']['p']:.4f} 满足，"
       f"但 Top10 Δ 仅 {st120['hit_top10']['delta']}pp（−25→−23），**没有显著缩小** |")
     w("")
     w("三个分支都不完全命中。**按最接近的分支 2 处理**：")
@@ -263,9 +263,9 @@ def main() -> int:
       f"（Δ {st800['hit_top1']['delta']:+d}pp，p={st800['hit_top1']['p']:.3f}），"
       f"检索 {exact['latency']['p50_ms']} → {res['ef800-strict_order']['aggregate']['latency']['p50_ms']} ms；"
       f"**但必须显式标注：Top10 有已知损失（Δ {st800['hit_top10']['delta']:+d}pp，"
-      f"p={st800['hit_top10']['p']}，且该损失不会被 iterative_scan 修复所改善）**。")
+      f"p={st800['hit_top10']['p']:.4f}，且该损失不会被 iterative_scan 修复所改善）**。")
     w("")
-    w(f"ef=120 仍是保守备选（Top1 p={st120['hit_top1']['p']} 无显著差异、"
+    w(f"ef=120 仍是保守备选（Top1 p={st120['hit_top1']['p']:.4f} 无显著差异、"
       f"位于安全区不会踩退化区），代价是 Top10 Δ {st120['hit_top10']['delta']}pp —— "
       f"**比 ef=800 的 {st800['hit_top10']['delta']}pp 更差**。所以「保守」只体现在稳定性，"
       "不体现在召回。")

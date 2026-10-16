@@ -2,7 +2,7 @@
 
 生成时间：2026-10-17 05:27:58　|　矩阵耗时 6.5 分钟　|　分母 100 条　|　top_k=10　|　过滤口径：on（chapter_title IS NOT NULL，与生产一致）
 
-**全程只读**：未改 postgresql.conf、未改 ef_search 默认值、未 REINDEX、未写正式表、未提交 Git（§6 之前的动作）
+**全程只读**：未改 postgresql.conf、未改 ef_search 默认值、未 REINDEX、未写正式表、未改 API / 前端。唯一的写操作是 §6 的产物入库（Git commit）。
 
 ---
 
@@ -92,15 +92,15 @@ B.7 矩阵用的是事务级 `set_config(..., true)`；真正落到应用里更�
 
 | 分支条件 | 是否满足 |
 |---|---|
-| ① ef=800 + strict_order 下 Top10 p > 0.05 | ❌ 不满足（p=0.01171875） |
+| ① ef=800 + strict_order 下 Top10 p > 0.05 | ❌ 不满足（p=0.0117） |
 | ② ef=800 Top10 仍 p<0.05 但 Δ 缩小 | ❌ Δ 未缩小（B.6 relaxed 就是 −9pp，本轮 strict 仍是 -9pp） |
-| ③ ef=120 Top1 p>0.05 且 Top10 Δ 显著缩小 | ❌ Top1 p=0.28627872467041016 满足，但 Top10 Δ 仅 -23pp（−25→−23），**没有显著缩小** |
+| ③ ef=120 Top1 p>0.05 且 Top10 Δ 显著缩小 | ❌ Top1 p=0.2863 满足，但 Top10 Δ 仅 -23pp（−25→−23），**没有显著缩小** |
 
 三个分支都不完全命中。**按最接近的分支 2 处理**：
 
-**推荐 `hnsw.ef_search = 800`** —— Top1 与 EXACT 无显著差异（Δ -2pp，p=0.727），检索 305.4 → 11.3 ms；**但必须显式标注：Top10 有已知损失（Δ -9pp，p=0.01171875，且该损失不会被 iterative_scan 修复所改善）**。
+**推荐 `hnsw.ef_search = 800`** —— Top1 与 EXACT 无显著差异（Δ -2pp，p=0.727），检索 305.4 → 11.3 ms；**但必须显式标注：Top10 有已知损失（Δ -9pp，p=0.0117，且该损失不会被 iterative_scan 修复所改善）**。
 
-ef=120 仍是保守备选（Top1 p=0.28627872467041016 无显著差异、位于安全区不会踩退化区），代价是 Top10 Δ -23pp —— **比 ef=800 的 -9pp 更差**。所以「保守」只体现在稳定性，不体现在召回。
+ef=120 仍是保守备选（Top1 p=0.2863 无显著差异、位于安全区不会踩退化区），代价是 Top10 Δ -23pp —— **比 ef=800 的 -9pp 更差**。所以「保守」只体现在稳定性，不体现在召回。
 
 ## §3 执行计划观测
 
@@ -195,14 +195,15 @@ B.6 原式：`N* = (预算 − 编码 + 38.02) / 4.4438 × 1000`
 ## §6 Git 状态
 
 - 提交前 HEAD：`f2174ba`（B.6 冻结基线）
-- 提交后 HEAD：**`dbd1a5b`**（父提交 `f2174ba`，确认在 f2174ba 之上）
+- 提交后 HEAD：**`73c7107`**（父提交 `dbd1a5b`，确认在 f2174ba 之上）
 
 ```
+73c7107 docs(discover): B.7 报告补录 commit hash 与 git 统计
 dbd1a5b feat(discover): B.6/B.7 — pgvector ANN tuning matrix, iterative_scan fix, scaling curve
 f2174ba chore: 建立项目初始基线（述树 ShuShu 交付包）
 ```
 
-本次提交统计： 21 files changed, 8063 insertions(+)
+本次提交统计： 2 files changed, 25 insertions(+), 2 deletions(-)
 
 **新增 / 纳入版本控制的文件**：
 
