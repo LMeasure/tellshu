@@ -50,6 +50,13 @@ def verdict(p: float) -> str:
     return "无显著差异"
 
 
+def git_out(args: list[str]) -> str:
+    import subprocess
+    r = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return r.stdout if r.returncode == 0 else f"（git {args[0]} 失败：{r.stderr.strip()}）"
+
+
 def db_scalar(sql: str, ):
     import psycopg2
     url = None
@@ -420,8 +427,17 @@ def main() -> int:
     # ------------------------------------------------------------------ §6
     w("## §6 Git 状态")
     w("")
+    head = git_out(["rev-parse", "--short", "HEAD"]).strip()
+    parent = git_out(["rev-parse", "--short", "HEAD~1"]).strip()
+    n_files = git_out(["show", "--stat", "--oneline", "HEAD"]).strip().splitlines()[-1]
     w("- 提交前 HEAD：`f2174ba`（B.6 冻结基线）")
-    w("- 提交后 HEAD：见下方 `git log --oneline -3`")
+    w(f"- 提交后 HEAD：**`{head}`**（父提交 `{parent}`，确认在 f2174ba 之上）")
+    w("")
+    w("```")
+    w(git_out(["log", "--oneline", "-3"]).rstrip())
+    w("```")
+    w("")
+    w(f"本次提交统计：{n_files}")
     w("")
     w("**新增 / 纳入版本控制的文件**：")
     w("")

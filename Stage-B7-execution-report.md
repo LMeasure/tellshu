@@ -195,7 +195,14 @@ B.6 原式：`N* = (预算 − 编码 + 38.02) / 4.4438 × 1000`
 ## §6 Git 状态
 
 - 提交前 HEAD：`f2174ba`（B.6 冻结基线）
-- 提交后 HEAD：见下方 `git log --oneline -3`
+- 提交后 HEAD：**`dbd1a5b`**（父提交 `f2174ba`，确认在 f2174ba 之上）
+
+```
+dbd1a5b feat(discover): B.6/B.7 — pgvector ANN tuning matrix, iterative_scan fix, scaling curve
+f2174ba chore: 建立项目初始基线（述树 ShuShu 交付包）
+```
+
+本次提交统计： 21 files changed, 8063 insertions(+)
 
 **新增 / 纳入版本控制的文件**：
 
