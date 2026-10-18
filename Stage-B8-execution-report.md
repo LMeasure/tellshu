@@ -50,6 +50,8 @@ SET hnsw.iterative_scan = strict_order;
 
 结论：本库上 placeholder 会被后加载的扩展接管，两种写法都生效；但 `SELECT NULL::vector` 仍然保留在文件里 —— 它保证 `SHOW` / `current_setting()` 在任何时候都能读到值，不依赖 placeholder 交接语义。
 
+复核补证（2026-10-17 当日，独立复跑）：用饥饿 query `Q024`（裸配置下仅返回 2 行）重测三种写法 —— 预栽+SET = 10 行、不预载直接 SET = 10 行、裸会话 = 2 行，与本表一致。
+
 ## §2 端到端延迟分解（100 条，隔离分段）
 
 | 统计量 | encode_ms | retrieve_ms (ef=800) | **e2e_ms** | EXACT retrieve_ms | EXACT e2e_ms |
@@ -85,7 +87,7 @@ SET hnsw.iterative_scan = strict_order;
 | 40–60 字 | 8 | 173.2 ms | 181.8 ms |
 | 60+ 字 | 7 | 199.3 ms | 212.6 ms |
 
-阶段 2 的 91.15 ms 是 **13 字短句**测出来的；本轮 query 集中位长度 28 字，编码自然更慢。另外本机内存负载已达 83%（可用 2.5 GB），整体上比阶段 2 测量时慢。
+阶段 2 的 91.15 ms 是 **13 字短句**测出来的；本轮 query 集中位长度 28 字，编码自然更慢。另外运行时段内存压力大（可用约 2.5 GB / 15.2 GB，观察值未随 JSON 产物留档），整体上比阶段 2 测量时慢。
 
 ## §3 Recall 确认
 
@@ -147,7 +149,7 @@ EXACT 检索 P50 在**同一小时内**的几次测量：
 
 嫌疑（按可能性排序）：
 
-1. **系统内存压力** —— 实测内存负载 83%、可用物理内存仅 2.5 GB / 15.2 GB。EXACT 每次扫 808 MB，页缓存根本放不下，重复读盘。
+1. **系统内存压力** —— 运行时段观察值：内存负载约 83%、可用物理内存约 2.5 GB / 15.2 GB（观察值，未随 JSON 产物留档；同日复核时可用内存仍在 0.5–2.5 GB 区间波动）。EXACT 每次扫 808 MB，页缓存根本放不下，重复读盘。
 2. **与编码服务争内存带宽** —— 模型常驻时 EXACT 从 ~364ms 涨到 ~633ms（1.7×）。
 3. 数据本身没变（内容指纹未变、行数未变、SQL 逐字一致），**可以排除数据因素**。
 
@@ -221,9 +223,10 @@ status 逻辑：`OK` 行数 < N*×0.8｜`WARN` ≥ N*×0.8 且 < N*｜`ALERT` �
 ## §7 Git 状态
 
 - 提交前 HEAD：`8d90d8f`（B.7 基线）
-- 提交后 HEAD：**`8d90d8f`**
+- 提交后 HEAD：**`2580a3a`**
 
 ```
+2580a3a feat(discover): B.8 — switch to HNSW ef=800 + strict_order, e2e latency baseline, regression check
 8d90d8f docs(discover): B.7 报告格式修正（p 值精度 / 只读声明口径）
 73c7107 docs(discover): B.7 报告补录 commit hash 与 git 统计
 dbd1a5b feat(discover): B.6/B.7 — pgvector ANN tuning matrix, iterative_scan fix, scaling curve
