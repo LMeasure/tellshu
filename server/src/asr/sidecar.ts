@@ -82,6 +82,7 @@ export class SidecarProcess {
   private child: ChildProcess | null = null;
   private state: SidecarState = 'starting';
   private deadReason: string | null = null;
+  private exited = false;
   private readyPromise: Promise<void>;
   private resolveReady: (() => void) | null = null;
   private rejectReady: ((error: Error) => void) | null = null;
@@ -97,6 +98,10 @@ export class SidecarProcess {
       this.resolveReady = resolve;
       this.rejectReady = reject;
     });
+    // 就绪前无人 waitReady 时 boot 失败也会拒绝它——挂一个空 catch 防
+    // unhandledRejection（Node 15+ 未处理拒绝默认致命）；
+    // waitReady 侧由 Promise.race 正常接住这个拒绝
+    this.readyPromise.catch(() => undefined);
   }
 
   getState(): SidecarState {
@@ -130,7 +135,8 @@ export class SidecarProcess {
   async close(): Promise<void> {
     const child = this.child;
     this.child = null;
-    if (child === null || child.exitCode !== null || child.signalCode !== null) return;
+    // 已退出（外部 kill / 启动失败）则无需再 kill
+    if (child === null || this.exited) return;
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         try {
@@ -170,6 +176,7 @@ export class SidecarProcess {
         // 启动期退出 = 启动失败；就绪后退出 = 运行中死亡。
         // 两种情况都是 dead 终态（不自动重启，防崩溃循环），
         // 后续 submit 由 waitReady 快速失败，不再打 HTTP。
+        this.exited = true;
         this._markDead(`转录服务进程退出（code=${code ?? 'null'}），请重启服务`);
       });
     } catch (error) {
@@ -209,6 +216,8 @@ export class SidecarProcess {
     this.state = 'dead';
     this.deadReason = reason;
     process.stderr.write(`[asr-sidecar] ${reason}\n`);
+    // 唤醒等待中的 waitReady（其 Promise.race 会接住；构造函数里也挂了空 catch
+    // 防无人等待时的 unhandledRejection）
     this.rejectReady?.(new AsrProviderError('unavailable', reason));
   }
 
