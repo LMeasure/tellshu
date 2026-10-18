@@ -73,17 +73,19 @@ class RemoteBackend:
 
     name = "remote"
 
-    def __init__(self, base_url: str, dim: int, timeout: float = 5.0):
+    def __init__(self, base_url: str, dim: int, timeout: float = 30.0):
         self.base_url = base_url.rstrip("/")
         self.dim = dim
         self.timeout = timeout
         self.load_ms = 0.0
         self.model_id = f"remote:{self.base_url}"
+        # 服务端自报的编码耗时（不含网络），用于区分「编码慢」和「调用慢」
+        self.last_server_encode_ms: float | None = None
 
     def encode_sync(self, text: str) -> list[float]:
         payload = json.dumps({"text": text}).encode("utf-8")
         req = urllib.request.Request(
-            self.base_url + "/encode",
+            self.base_url + "/embed",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -93,9 +95,15 @@ class RemoteBackend:
                 body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.URLError as exc:
             raise RuntimeError(f"远程编码服务不可用：{exc}") from exc
-        vec = body.get("embedding")
+        # 优先读 vector（embed_server.py 的契约），兼容 embedding 别名
+        vec = body.get("vector")
+        if vec is None:
+            vec = body.get("embedding")
         if not isinstance(vec, list) or len(vec) != self.dim:
-            raise RuntimeError(f"远程编码返回异常：维度 {len(vec) if isinstance(vec, list) else '?'}，期望 {self.dim}")
+            raise RuntimeError(
+                f"远程编码返回异常：维度 {len(vec) if isinstance(vec, list) else '?'}，期望 {self.dim}"
+            )
+        self.last_server_encode_ms = body.get("encode_ms")
         return [float(v) for v in vec]
 
 

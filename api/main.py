@@ -30,6 +30,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # 平铺导入 compat
 
+API_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = API_ROOT.parent
+SERVER_CACHE = PROJECT_ROOT / "server" / ".crawl-cache"
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -124,9 +128,84 @@ class State:
         self.started_at = time.time()
         self.requests = 0
         self.rng = random.Random()
+        # B.10 任务 2：最近一次压测的延迟画像。health 每次都跑压测太贵，
+        # 改成启动时从 .crawl-cache 读最近一次结果缓存在内存里。
+        self.latency_profile: dict[str, Any] | None = None
 
 
 state = State()
+
+
+# ---------------------------------------------------------------------------
+# 延迟画像（B.10 任务 2）
+# ---------------------------------------------------------------------------
+
+PROFILE_SOURCES = ("_b10-arm-A-r*.json", "_b10-arm-B-r*.json", "_b10-arm-C-r*.json",
+                   "_b9-http-bench.json")
+
+# 压测文件 → 它属于哪种部署形态。混着读会把「共置的 190ms」当成「隔离的 190ms」，
+# 那正是 B.10 要消灭的错误，所以这里必须按形态匹配，匹配不上就明确标 mismatch。
+PROFILE_MODE_PREFIX = {
+    "colocated": ("_b10-arm-A-", "_b9-http-bench"),   # B.9 的 API 也是共置
+    "isolated": ("_b10-arm-B-", "_b10-arm-C-"),
+}
+
+
+def load_latency_profile(cfg: Config | None = None) -> dict[str, Any] | None:
+    """取最近一次压测的 encode/retrieve/e2e P50，优先选**与当前部署形态一致**的那次。
+
+    不自己跑压测（那是 b9-http-benchmark.py / b10-isolation-experiment.py 的活）。
+    两种形态都跑过之后，切换配置时各自拿各自的数字。
+    确实拿不到同形态数据时才回退到最近一次，并用 `mode_match=false` 标出来 —— 不假装匹配。
+    """
+    cache = SERVER_CACHE
+    if not cache.exists():
+        return None
+    mode = cfg.embed_mode if cfg else None
+
+    def newest(prefixes: tuple[str, ...]) -> Path | None:
+        cands: list[tuple[float, Path]] = []
+        for pat in PROFILE_SOURCES:
+            for p in cache.glob(pat):
+                if prefixes and not p.name.startswith(prefixes):
+                    continue
+                cands.append((p.stat().st_mtime, p))
+        if not cands:
+            return None
+        cands.sort(key=lambda t: t[0], reverse=True)
+        return cands[0][1]
+
+    latest = newest(PROFILE_MODE_PREFIX.get(mode or "", ()))
+    matched = latest is not None
+    if latest is None:
+        latest = newest(())          # 回退：任何压测结果都行，但会标 mismatch
+    if latest is None:
+        return None
+
+    try:
+        data = json.loads(latest.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    summary = data.get("summary") or {}
+    if not summary:
+        return None
+
+    def p50(key: str) -> float | None:
+        v = summary.get(key, {}).get("p50") if isinstance(summary.get(key), dict) else None
+        return v
+
+    return {
+        "mode": mode,
+        "source": latest.name,
+        "mode_match": matched,
+        "generated_at": data.get("generated_at"),
+        "encode_p50_ms": p50("encode_ms"),
+        "retrieve_p50_ms": p50("retrieve_ms"),
+        "e2e_p50_ms": p50("e2e_ms"),
+        "note": ("来自最近一次压测（缓存在内存，health 不实时跑压测）。"
+                 "colocated 与 isolated 的 retrieve 相差数倍，"
+                 "mode_match=false 表示这次数据与当前部署形态不一致，别直接拿去做预算。"),
+    }
 
 
 @asynccontextmanager
@@ -147,7 +226,10 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("启动自检失败，拒绝提供服务：" + " | ".join(check.errors))
 
     state.cfg, state.embedder, state.pool, state.check = cfg, embedder, pool, check
-    log.info("启动完成，服务就绪")
+    state.latency_profile = load_latency_profile(cfg)
+    log.info("启动完成，服务就绪（编码模式 %s）", cfg.embed_mode)
+    if state.latency_profile is None:
+        log.warning("未在 .crawl-cache 找到压测结果，latency_profile 将为 null（不编造数字）")
     log.info("=" * 60)
     try:
         yield
@@ -317,12 +399,11 @@ async def discover(payload: DiscoverRequest):
     }
 
 
-@app.get("/api/discover/health")
-async def health():
+async def build_health() -> tuple[dict[str, Any], int]:
+    """health 的实际逻辑。抽出成函数，供 /health 与 /status 共用（B.10 任务 4）。"""
     cfg = state.cfg
     if cfg is None:
-        return JSONResponse(status_code=503,
-                            content={"status": "starting", "detail": "服务尚未就绪"})
+        return {"status": "starting", "detail": "服务尚未就绪"}, 503
 
     check = state.check
     # GUC 每次都实测（不读配置，只读连接真实状态）
@@ -330,10 +411,7 @@ async def health():
         ef_now = str(await run_scalar(state.pool, "SHOW hnsw.ef_search"))
         iscan_now = str(await run_scalar(state.pool, "SHOW hnsw.iterative_scan"))
     except Exception as exc:  # noqa: BLE001
-        return JSONResponse(status_code=503, content={
-            "status": "error",
-            "database": {"status": "error", "detail": str(exc)},
-        })
+        return {"status": "error", "database": {"status": "error", "detail": str(exc)}}, 503
 
     guc_ok = ef_now == cfg.expected_ef_search and iscan_now == cfg.expected_iterative_scan
 
@@ -372,6 +450,9 @@ async def health():
             "ok": plan_ok and rows_ok,
         },
         "embedding": describe(state.embedder),
+        # B.10 任务 2：延迟画像，标明当前是共置还是隔离 —— 两者的 retrieve 差好几倍，
+        # 不标清楚的话很容易拿错口径去做预算。
+        "latency_profile": state.latency_profile,
         "pool": pool_stats(state.pool),
         "startup_check": {
             "ok": check.ok if check else None,
@@ -379,7 +460,85 @@ async def health():
         },
         "uptime_seconds": round(time.time() - state.started_at, 1),
     }
-    return JSONResponse(status_code=200 if db_ok else 503, content=body)
+    return body, (200 if db_ok else 503)
+
+
+@app.get("/api/discover/health")
+async def health():
+    body, code = await build_health()
+    return JSONResponse(status_code=code, content=body)
+
+
+# ---------------------------------------------------------------------------
+# B.10 任务 4：status —— health + quick regression 一次调用拿全
+# ---------------------------------------------------------------------------
+
+@app.get("/api/discover/status")
+async def status():
+    """给外部监控系统用的一次性状态端点。
+
+    只做三件便宜的事：health 自检、查行数、用**缓存的斜率**算 N*。
+    不跑 EXACT（那要 20 秒），所以响应时间能控制在 200ms 内。
+    斜率来源会明确标注；缓存缺失时 N* 为 null —— 不拿假斜率算假数字。
+    """
+    t0 = time.perf_counter()
+    cfg = state.cfg
+    body, code = await build_health()
+
+    reg: dict[str, Any] = {"available": False}
+    if cfg is not None and state.pool is not None:
+        try:
+            row_count = int(await run_scalar(state.pool, "SELECT count(*) FROM discovered_book_chunks"))
+            slope = intercept = None
+            slope_src = None
+            # 优先用最近一次完整回归的拟合结果
+            for name in ("_b9-regression-http.json", "_b8-regression.json"):
+                p = SERVER_CACHE / name
+                if not p.exists():
+                    continue
+                try:
+                    d = json.loads(p.read_text(encoding="utf-8"))
+                    if d.get("slope_ms_per_1k_rows") is not None:
+                        slope = float(d["slope_ms_per_1k_rows"])
+                        intercept = float(d["intercept_ms"])
+                        slope_src = f"{name}（{d.get('fit_mode', '拟合')}）"
+                        break
+                except Exception:  # noqa: BLE001
+                    continue
+
+            if slope and intercept is not None:
+                enc_long = 177.96   # B.6 实测长 query 编码 P50
+                n_star = (400 - enc_long - intercept) / slope * 1000
+                occupancy = row_count / n_star
+                st = "ALERT" if row_count >= n_star else ("WARN" if row_count >= n_star * 0.8 else "OK")
+                reg = {
+                    "available": True,
+                    "row_count": row_count,
+                    "n_star_400ms_long_query": round(n_star),
+                    "occupancy_pct": round(occupancy * 100, 1),
+                    "status": st,
+                    "slope_ms_per_1k_rows": round(slope, 4),
+                    "intercept_ms": round(intercept, 2),
+                    "slope_source": slope_src,
+                    "caveat": "N* 用缓存斜率算（不跑 EXACT）。斜率会随硬件负载变化，"
+                              "要精确判定请跑 GET /api/discover/regression 完整模式。",
+                }
+            else:
+                reg = {"available": True, "row_count": row_count,
+                       "n_star_400ms_long_query": None, "occupancy_pct": None, "status": None,
+                       "slope_source": None,
+                       "caveat": "缺少缓存斜率（未跑过完整回归），N* 无法计算。"
+                                 "先跑 GET /api/discover/regression 完整模式。"}
+        except Exception as exc:  # noqa: BLE001
+            reg = {"available": False, "detail": str(exc)}
+
+    payload = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "health": body,
+        "regression_quick": reg,
+        "status_elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+    return JSONResponse(status_code=code, content=payload)
 
 
 @app.get("/api/discover/regression")

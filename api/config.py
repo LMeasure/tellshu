@@ -96,6 +96,15 @@ class Config:
 
     paths: dict[str, str] = field(default_factory=dict)
 
+    @property
+    def embed_mode(self) -> str:
+        """B.10：编码是跟 API 共置（local）还是在独立进程（remote）。
+
+        health 的 latency_profile 用这个字段标注当前延迟属于哪种部署形态 ——
+        共置的 retrieve 与隔离的 retrieve 不是同一个数，混着看会得出错误预算。
+        """
+        return "colocated" if self.embed_backend == "local" else "isolated"
+
 
 def load() -> Config:
     load_dotenv(SERVER_ROOT / ".env")
@@ -113,7 +122,14 @@ def load() -> Config:
             "连接初始化口径缺失，拒绝启动"
         )
 
-    backend = os.environ.get("EMBEDDING_BACKEND", "local").strip().lower()
+    # 后端判定（B.10 修订）：
+    #   设了 EMBEDDING_SERVICE_URL  → remote（编码在独立进程，隔离）
+    #   没设                        → local（编码在 API 进程内，共置）
+    #   显式 EMBEDDING_BACKEND      → 以显式值为准，与 URL 冲突时报错而不是猜
+    service_url = os.environ.get("EMBEDDING_SERVICE_URL", "").strip()
+    backend = os.environ.get("EMBEDDING_BACKEND", "").strip().lower()
+    if not backend:
+        backend = "remote" if service_url else "local"
     if backend not in ("local", "remote", "onnx"):
         raise RuntimeError(f"EMBEDDING_BACKEND 只能是 local / remote / onnx，收到 {backend!r}")
     if backend == "onnx":
@@ -122,8 +138,11 @@ def load() -> Config:
             "EMBEDDING_BACKEND=onnx 尚未实现（B.9 只完成 ONNX INT8 调研，见报告 §7）。"
             "当前请使用 local 或 remote。"
         )
-
-    service_url = os.environ.get("EMBEDDING_SERVICE_URL", "").strip()
+    if backend == "local" and service_url:
+        raise RuntimeError(
+            "EMBEDDING_BACKEND=local 但又设了 EMBEDDING_SERVICE_URL，口径冲突："
+            "要么去掉 URL 走共置，要么去掉 EMBEDDING_BACKEND=local 走隔离。"
+        )
     if backend == "remote" and not service_url:
         raise RuntimeError("EMBEDDING_BACKEND=remote 但未设置 EMBEDDING_SERVICE_URL")
 
