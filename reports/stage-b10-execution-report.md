@@ -1,6 +1,6 @@
 # Stage B.10 — 共置污染隔离验证 + 预算定标
 
-生成时间：2026-10-19 01:43:13　|　每臂每轮 40 条 query（warmup 8 条丢弃）　|　top_k=10　|　commit 0d1889b
+生成时间：2026-10-19 01:45:07　|　每臂每轮 40 条 query（warmup 8 条丢弃）　|　top_k=10　|　commit fc50c4a
 
 ---
 
@@ -179,9 +179,9 @@ BASE=http://127.0.0.1:8000 PYTHON_BIN=C:/Python314/python.exe scripts/monitor-ch
 ## §7 Git 状态
 
 ```
+fc50c4a feat(discover): B.10 — 共置污染隔离验证（假设被证伪）+ 预算双口径定标
 0d1889b docs(b9): 补录 commit hash（代码提交 6ad6abf）
 6ad6abf feat(discover): B.9 — HTTP 检索 API 实现 + ONNX INT8 调研 + 回归端点
-8ee7658 docs(convert): 更正 V2.2 文档中 tencent.ts 报错陈述
 ```
 
 ## §8 最终预算
