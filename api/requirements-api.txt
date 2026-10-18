@@ -1,0 +1,30 @@
+# 述树 · 发现书籍检索 API 依赖（B.9）
+#
+# 安装：
+#   C:/Python314/python.exe -m pip install -r api/requirements-api.txt
+#
+# ⚠ 本机实测环境：Windows x64 + Python 3.14.6（C:/Python314）
+#   下面带 == 的版本号是本机实测版本，升级前请重跑 B.9 验证
+#   （尤其是 psycopg2 与 torch：一个断了检索，一个断了编码）。
+
+# ---- HTTP 层 ----
+fastapi==0.146.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+
+# ---- 数据访问（同步驱动；API 用 to_thread 卸载到线程池，见 api/db.py 说明）----
+psycopg2==2.9.13
+
+# ---- 编码后端：local（默认，BGE-M3 常驻进程内）----
+# torch 的 CPU 版不在 PyPI 默认索引里，需按平台装，例如：
+#   C:/Python314/python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+# 本机实测：torch 2.14.1+cpu / sentence-transformers 6.2.0.dev0 / numpy 2.5.3
+sentence-transformers>=6.0
+numpy>=2.0
+
+# ---- 编码后端：remote ----
+# 配 EMBEDDING_SERVICE_URL 即可，不需要上面三个 ML 依赖。
+#
+# ---- 编码后端：onnx ----
+# B.9 只完成 ONNX INT8 调研，**尚未实现**。config.py 会在启动时明确报错，
+# 不会静默退化成 torch 冒充量化。
