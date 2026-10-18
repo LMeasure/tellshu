@@ -16,6 +16,35 @@ export interface TranslateConfig {
   apiKey: string | null;
 }
 
+/**
+ * ASR 配置（Phase 1.5：本地自建 faster-whisper sidecar）。
+ * provider != 'local' 或缺 pythonPath 时转录接口如实 503，绝不返回假字幕。
+ *   provider          = 'local' 时装配本地转录（自动 spawn sidecar）
+ *   pythonPath        = venv 的 python.exe（asr_service/requirements-asr.txt 安装）
+ *   modelDir          = Whisper 模型目录（默认 server/data/asr-models/whisper-small）
+ *   sidecarPort       = sidecar 监听端口（默认 8177，仅回环）
+ *   sidecarTimeoutMs  = Node → sidecar 单次 HTTP 超时（默认 10s）
+ *   sidecarLoadMs     = sidecar 启动 + 模型加载的 health 门控宽限（默认 60s）
+ *   dataDir           = 媒体中转目录（in/<jobId>/ 由 Node 写、终态清理）
+ *   debugSaveRaw      = debug：保存 sidecar 原始响应（默认 false，绝不进 Transcript）
+ */
+export interface AsrProviderConfig {
+  provider: string | null;
+  pythonPath: string | null;
+  modelDir: string | null;
+  sidecarPort: number;
+  sidecarTimeoutMs: number;
+  sidecarLoadMs: number;
+  dataDir: string;
+  debugSaveRaw: boolean;
+}
+
+/** 格式转换：引擎开关（默认关，关时任务接口如实 503）；存储目录独立于 OCR。 */
+export interface ConvertConfig {
+  engineEnabled: boolean;
+  storageDir: string;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -29,7 +58,9 @@ export interface AppConfig {
   corsOrigins: string[];
   ocrPublicEnabled: boolean;
   translate: TranslateConfig;
+  asr: AsrProviderConfig;
   storageDir: string;
+  convert: ConvertConfig;
 }
 
 function required(name: string): string {
@@ -71,16 +102,28 @@ function parseOrigins(raw: string | null): string[] {
   return [...seen];
 }
 
-function parseTimeout(raw: string | null): number {
-  const fallback = 30_000;
+function parseTimeout(raw: string | null, fallback = 30_000): number {
   if (raw === null) return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 1_000 || value > 300_000) return fallback;
   return value;
 }
 
+function parseSidecarPort(raw: string | null): number {
+  if (raw === null) return 8177;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0 || value > 65535) {
+    throw new Error(`ASR_SIDECAR_PORT 不是合法端口：${raw}`);
+  }
+  return value;
+}
+
 export function loadConfig(): AppConfig {
   const storageDirInput = optional('OCR_STORAGE_DIR') ?? 'data/ocr';
+  const convertStorageDirInput = optional('CONVERT_STORAGE_DIR') ?? 'data/convert';
+  const asrDataDirInput = optional('ASR_DATA_DIR') ?? 'data/asr';
+  const asrPythonInput = optional('ASR_PYTHON_PATH');
+  const asrModelDirInput = optional('ASR_MODEL_DIR');
   return {
     port: parsePort(optional('PORT')),
     databaseUrl: required('DATABASE_URL'),
@@ -97,8 +140,37 @@ export function loadConfig(): AppConfig {
       url: optional('TRANSLATE_API_URL'),
       apiKey: optional('TRANSLATE_API_KEY'),
     },
+    asr: {
+      provider: optional('ASR_PROVIDER'),
+      // 相对路径按 server/ 根解析（.env.example 的 asr_service/venv/... 即此口径）
+      pythonPath:
+        asrPythonInput === null
+          ? null
+          : path.isAbsolute(asrPythonInput)
+            ? asrPythonInput
+            : path.resolve(SERVER_ROOT, asrPythonInput),
+      modelDir:
+        asrModelDirInput === null
+          ? null
+          : path.isAbsolute(asrModelDirInput)
+            ? asrModelDirInput
+            : path.resolve(SERVER_ROOT, asrModelDirInput),
+      sidecarPort: parseSidecarPort(optional('ASR_SIDECAR_PORT')),
+      sidecarTimeoutMs: parseTimeout(optional('ASR_SIDECAR_TIMEOUT_MS'), 10_000),
+      sidecarLoadMs: parseTimeout(optional('ASR_SIDECAR_LOAD_TIMEOUT_MS'), 60_000),
+      dataDir: path.isAbsolute(asrDataDirInput)
+        ? asrDataDirInput
+        : path.resolve(SERVER_ROOT, asrDataDirInput),
+      debugSaveRaw: parseBool(optional('ASR_DEBUG_SAVE_RAW')),
+    },
     storageDir: path.isAbsolute(storageDirInput)
       ? storageDirInput
       : path.resolve(SERVER_ROOT, storageDirInput),
+    convert: {
+      engineEnabled: parseBool(optional('CONVERT_ENGINE_ENABLED')),
+      storageDir: path.isAbsolute(convertStorageDirInput)
+        ? convertStorageDirInput
+        : path.resolve(SERVER_ROOT, convertStorageDirInput),
+    },
   };
 }

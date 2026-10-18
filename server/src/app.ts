@@ -7,8 +7,12 @@ import express from 'express';
 import type { AppConfig } from './config';
 import type { DictionaryRepository } from './db/repository';
 import { errorHandler, notFoundHandler } from './http/errors';
+import type { AsrService } from './asr/service';
 import type { OcrPipeline } from './ocr/pipeline';
 import { createAdminRouter } from './routes/admin';
+import { createAsrRouter } from './routes/asr';
+import { createConvertRouter } from './routes/convert';
+import { ConvertStore } from './db/convertStore';
 import { createDictionaryRouter } from './routes/dictionary';
 import { createHealthRouter } from './routes/health';
 import { createOcrRouter } from './routes/ocr';
@@ -21,6 +25,8 @@ export interface AppDeps {
   config: AppConfig;
   repository: DictionaryRepository;
   pipeline: OcrPipeline;
+  asr: AsrService;
+  convertStore: ConvertStore;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -62,6 +68,15 @@ export function createApp(deps: AppDeps): express.Express {
     createTranslateRouter({
       translate: deps.config.translate,
       timeoutMs: TRANSLATE_TIMEOUT_MS,
+    }),
+  );
+  app.use('/api', createAsrRouter({ service: deps.asr }));
+  app.use(
+    '/api',
+    createConvertRouter({
+      store: deps.convertStore,
+      config: deps.config,
+      pipeline: deps.pipeline,
     }),
   );
   app.use('/api', createDictionaryRouter({ repository: deps.repository }));

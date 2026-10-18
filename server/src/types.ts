@@ -190,6 +190,52 @@ export function createEmptyOcrPage(): OcrPage {
 }
 
 // -----------------------------------------------------------------------------
+// ASR 音视频转字幕（Phase 1）
+// -----------------------------------------------------------------------------
+
+/** 单文件上限（服务端自保阈值，env ASR_MAX_FILE_BYTES 可调）。 */
+export const ASR_MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** 任务在进程内的存活时长（2 小时）；过期后 410，墓碑再保留一个 TTL。 */
+export const ASR_JOB_TTL_MS = 2 * 60 * 60 * 1_000;
+
+export type AsrJobStatus = 'queued' | 'running' | 'done' | 'failed';
+
+export interface AsrJobError {
+  code: string;
+  message: string;
+}
+
+/** 归一化后的一个字幕段（秒，允许小数）。 */
+export interface AsrTranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** 归一化后的转录结果（normalize.ts 的输出，JobStore 只存这个）。 */
+export interface AsrTranscript {
+  /** ISO 语言码；供应商未给出时为 'und'（未定），不臆造 */
+  language: string;
+  /** 秒；供应商未给出时由段落最大 end 推导 */
+  duration: number;
+  segments: AsrTranscriptSegment[];
+}
+
+export interface AsrSubmitResponse {
+  jobId: string;
+  status: AsrJobStatus;
+  error: AsrJobError | null;
+}
+
+export interface AsrJobResponse {
+  jobId: string;
+  status: AsrJobStatus;
+  /** done 时的转录结果；未完成 / 失败为 null */
+  transcript: AsrTranscript | null;
+  error: AsrJobError | null;
+}
+
+// -----------------------------------------------------------------------------
 // 解析规则（来自「使用说明」页，作用于同 source_book 的后续页）
 // -----------------------------------------------------------------------------
 
@@ -653,4 +699,48 @@ export interface SearchResponse {
   hits: SearchHit[];
   /** 内置 5 本词库（words 表）命中；2026-10-06 起搜索为全局，与 hits 一次返回 */
   words: WordSearchHit[];
+}
+
+// -----------------------------------------------------------------------------
+// 格式转换（复用 server/ 与现有 pg 连接池；转换引擎由 Python Worker 异步消费）
+// -----------------------------------------------------------------------------
+
+export type ConvertFormat = 'pdf' | 'docx' | 'png' | 'jpg' | 'xlsx';
+export type ConvertTaskStatus = 'waiting' | 'processing' | 'success' | 'failed';
+
+export interface ConvertUploadResponse {
+  fileId: string;
+  format: ConvertFormat;
+  originalName: string;
+  sizeBytes: number;
+}
+
+export interface ConvertCreateTaskResponse {
+  taskId: string;
+  status: ConvertTaskStatus;
+}
+
+export interface ConvertTaskStatusResponse {
+  taskId: string;
+  status: ConvertTaskStatus;
+  progress: number;
+  sourceFormat: ConvertFormat | null;
+  targetFormat: ConvertFormat | null;
+  errorMessage: string | null;
+  /** 完成后可下载结果的文件 id（指向 convert_files 的一行） */
+  resultFileId: string | null;
+}
+
+export interface ConvertHealthResponse {
+  ok: boolean;
+  engineEnabled: boolean;
+}
+
+/** 转换结果 OCR 成文章：逐页识别后按页码顺序拼接的文本 */
+export interface ConvertOcrResponse {
+  taskId: string;
+  /** 按页码顺序拼接的识别文本（页间以空行分隔） */
+  text: string;
+  /** 实际识别的页数 */
+  pages: number;
 }

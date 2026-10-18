@@ -12,14 +12,15 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test dist/test/parsers.test.js",
+    "test": "tsc -p tsconfig.json && node --test \"dist/test/*.test.js\"",
     "db:migrate": "tsc -p tsconfig.json && node dist/src/scripts/migrate.js",
     "db:reparse": "tsc -p tsconfig.json && node dist/src/scripts/reparse.js",
     "db:review": "tsc -p tsconfig.json && node dist/src/scripts/review.js",
     "db:confirm": "tsc -p tsconfig.json && node dist/src/scripts/confirm.js",
     "db:seed-words": "tsc -p tsconfig.json && node dist/src/scripts/seed-words.js",
     "crawl:books": "tsc -p tsconfig.json && node dist/src/scripts/crawl-books.js",
-    "apply:sql": "tsc -p tsconfig.json && node dist/src/scripts/apply-sql.js"
+    "apply:sql": "tsc -p tsconfig.json && node dist/src/scripts/apply-sql.js",
+    "asr:sidecar": "python -m uvicorn app:app --host 127.0.0.1 --port 8177 --app-dir asr_service"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -25,6 +25,11 @@ import type { ScanRow } from '../db/repository';
 /** raw_ocr_json 最多保留的结果条数，避免单条记录撑爆 jsonb。 */
 const MAX_RAW_RESULTS = 20;
 
+/** 旁路 OCR（如格式转换结果→文章）的总等待上限；超过即判定超时。 */
+const OCR_TOTAL_TIMEOUT_MS = 90_000;
+/** 旁路 OCR 轮询 Paddle 任务状态的间隔。 */
+const OCR_POLL_INTERVAL_MS = 1_500;
+
 export interface SubmitScanInput {
   images: readonly IncomingImage[];
   purpose: ScanPurpose;
@@ -195,6 +200,67 @@ export class OcrPipeline {
     }
 
     return { batchId, scans };
+  }
+
+  /**
+   * 直接对一批内存图片做 OCR，按页码顺序返回拼接文本。
+   *
+   * 与 `submit()` 不同：不落 OCR 扫描表、不持久化图片，专为「调用方已持有图片字节」的旁路场景设计
+   * （如格式转换结果 → 文章）。上游（PaddleOCR）不可用时抛 503；单页失败整体抛 502；
+   * 全程不编造/不跳过任何页，保证文本真实。同步阻塞直到全部完成或超时（适合用户主动触发的「保存」动作）。
+   */
+  async ocrBuffersToText(
+    images: readonly IncomingImage[],
+  ): Promise<{ text: string; pages: number }> {
+    if (images.length === 0) return { text: '', pages: 0 };
+    if (!this.paddle.configured) {
+      throw ApiError.serviceUnavailable('OCR 服务未接入（PaddleOCR 未配置，无法提取文字）');
+    }
+
+    const batchId = randomUUID();
+    const jobs: Array<{ index: number; jobId: string }> = [];
+    for (let i = 0; i < images.length; i += 1) {
+      const image = images[i];
+      if (!image) continue;
+      const submitted = await this.paddle.submitJob({
+        buffer: image.buffer,
+        fileName: `${batchId}-${i}.png`,
+        mimeType: image.mimeType,
+        batchId,
+      });
+      jobs.push({ index: i, jobId: submitted.jobId });
+    }
+
+    const texts: Array<string | null> = new Array(images.length).fill(null);
+    const deadline = Date.now() + OCR_TOTAL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      let pending = 0;
+      for (const job of jobs) {
+        if (texts[job.index] !== null) continue;
+        const status = await this.paddle.getJobStatus(job.jobId);
+        if (status.state === 'done') {
+          const jsonUrl = status.resultUrl?.jsonUrl;
+          if (jsonUrl === undefined || jsonUrl === null || jsonUrl === '') {
+            throw ApiError.upstream(`OCR 第 ${job.index + 1} 页完成但未返回结果地址`);
+          }
+          const jsonl = await this.paddle.downloadJsonl(jsonUrl);
+          const { pages } = parseJsonl(jsonl);
+          texts[job.index] = pagesToText(pages);
+        } else if (status.state === 'failed') {
+          throw ApiError.upstream(`OCR 第 ${job.index + 1} 页识别失败：${status.errorMsg ?? '未知错误'}`);
+        } else {
+          pending += 1;
+        }
+      }
+      if (pending === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, OCR_POLL_INTERVAL_MS));
+    }
+
+    if (texts.some((t) => t === null)) {
+      throw ApiError.serviceUnavailable('OCR 处理超时，请稍后重试或减小文件页数');
+    }
+    const text = texts.filter((t): t is string => t !== null).join('\n\n');
+    return { text, pages: texts.length };
   }
 
   /** 轮询单个扫描：done 后归档原始 JSON 并按 page_kind 解析入库。 */

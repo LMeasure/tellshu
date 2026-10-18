@@ -28,5 +28,8 @@ data
 
 # ASR sidecar：venv（约 500MB）与 Python 字节码缓存，本地环境产物不进 git
 asr_service/venv/
-asr_service/**/__pycache__/
+__pycache__/
+# Windows 保留设备名幽灵条目（cmd/PowerShell 误重定向产生；git add 遍历目录时会
+# 因设备名重定向报 "No such file or directory"，显式忽略以让目录可入库）
+nul
 

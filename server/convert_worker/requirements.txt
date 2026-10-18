@@ -1,0 +1,6 @@
+# 格式转换 Worker 依赖
+# 注意：PyMuPDF 版本号需核实 2026 年最新稳定版（见 https://pypi.org/project/PyMuPDF/）。
+# 下方给出保守下界 + 上界（2.x 若已发布且 API 兼容可放宽）；落地时以实测为准。
+psycopg2-binary>=2.9,<3
+python-dotenv>=1.0,<2
+PyMuPDF>=1.24,<2

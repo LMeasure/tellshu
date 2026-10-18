@@ -39,6 +39,10 @@ export class ApiError extends Error {
     return new ApiError(413, 'payload_too_large', message);
   }
 
+  static unsupportedMediaType(message = '不支持的文件类型'): ApiError {
+    return new ApiError(415, 'unsupported_media_type', message);
+  }
+
   static serviceUnavailable(message = '依赖服务未配置或不可用'): ApiError {
     return new ApiError(503, 'service_unavailable', message);
   }
@@ -95,12 +99,15 @@ export function errorHandler(error: unknown, _req: Request, res: Response, next:
 
   if (isMulterError(error)) {
     const code = error.code;
+    // 文案与具体路由解耦：体积上限因路由而异（图片 50MB / 音视频 100MB），
+    // 字段名也因路由而异（images / media），这里只给通用口径，
+    // 精确上限由各路由自己的预校验提示。
     if (code === 'LIMIT_FILE_SIZE') {
-      res.status(413).json(ApiError.payloadTooLarge('单个文件超过 50MB 上限').toBody());
+      res.status(413).json(ApiError.payloadTooLarge('上传文件超过大小上限').toBody());
       return;
     }
     if (code === 'LIMIT_FILE_COUNT' || code === 'LIMIT_UNEXPECTED_FILE') {
-      res.status(400).json(ApiError.badRequest('上传文件数量超限或字段名不正确（应为 images）').toBody());
+      res.status(400).json(ApiError.badRequest('上传文件数量超限或字段名不正确').toBody());
       return;
     }
     res.status(400).json(ApiError.badRequest(`上传失败：${error.message}`).toBody());
