@@ -1,6 +1,6 @@
 # B.9 执行报告 —— HTTP API 实现 + 编码优化调研
 
-生成时间：2026-10-19 01:01:39　|　分母 20 条　|　top_k=10　|　后端 BGE-M3 本地常驻　|　commit 8ee7658
+生成时间：2026-10-19 01:01:39　|　分母 20 条　|　top_k=10　|　后端 BGE-M3 本地常驻　|　commit 6ad6abf
 
 ---
 
@@ -261,9 +261,9 @@ optimum-cli onnxruntime quantize --onnx_model bge-m3-onnx --avx2 --per_channel -
 ## §10 提交
 
 ```
+6ad6abf feat(discover): B.9 — HTTP 检索 API 实现 + ONNX INT8 调研 + 回归端点
 8ee7658 docs(convert): 更正 V2.2 文档中 tencent.ts 报错陈述
 338108b docs(convert): 格式转换 V2.2 文档入库（结果文件 TTL 自动清理）
-1f6652c docs(asr): Phase 1.5 ASR 本地自建交付文档入库
 ```
 
 本轮新增：`api/`（含 8 个文件）、`api/requirements-api.txt`、`server/src/scripts/b9-retrieve-cost-probe.py`、`server/src/scripts/make-b9-execution-report.py`、本报告。
