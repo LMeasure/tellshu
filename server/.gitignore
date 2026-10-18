@@ -9,6 +9,12 @@ data
 # 抓取原始缓存（含公有领域书籍全文 + manifest），只作为本地中间产物，绝不进 git
 .crawl-cache/
 
+# Stage C 探针下载产物（只做速率预估，从来不入库；缺元数据字段，不是交付物）
+.probe-cache/
+
+# HNSW / Stage B.5 参数实验的本地中间结果（原始 JSON，交付物是 Markdown 报告）
+.hnsw-*
+
 # 检索 A/B 评估的本地中间结果（报告里的数字才是交付物，原始 JSON 不进 git）
 .eval-*.json
 
@@ -19,3 +25,8 @@ data
 # 候选书单生成的中间产物（原始 JSON / 日志；交付物是 Markdown 书单文档）
 .candidate-plan.json
 .candidate-plan.log
+
+# ASR sidecar：venv（约 500MB）与 Python 字节码缓存，本地环境产物不进 git
+asr_service/venv/
+asr_service/**/__pycache__/
+

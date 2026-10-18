@@ -1,0 +1,14 @@
+# 推理核心（spike 2026-10-17 实测组合，勿单独升级——见 README「版本锁定」）
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+# av 必须 pin 18.1.0：av 19 移除了 av.open(metadata_errors=...) 参数，
+# faster-whisper 1.2.1 仍传递该参数 → TypeError，转录直接失败（spike 实测）
+av==18.1.0
+# onnxruntime 仅供 ASR_VAD_FILTER=true 时加载 silero VAD 用（默认关，装上备用）
+onnxruntime==1.31.0
+tokenizers>=0.20,<1.0
+
+# HTTP 层（Phase1.5 决策点 4：FastAPI + uvicorn）
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+python-multipart>=0.0.12
