@@ -83,10 +83,14 @@ class Config:
     top_k_max: int = 50
     max_query_chars: int = 500
 
-    embed_backend: str = "local"          # local | remote | onnx（onnx 仅预留，未实现）
+    embed_backend: str = "local"          # local | remote | onnx
     embed_model: str = "BAAI/bge-m3"
     embed_dim: int = 1024
     embedding_service_url: str = ""
+
+    # ONNX 后端（B.11 实现）：模型路径 + 会话线程数
+    onnx_model_path: str = str(PROJECT_ROOT / "bge-m3-onnx" / "model_int8.onnx")
+    onnx_threads: int = 4
 
     # §10.1 拍板第 4 条：对 ef=800 查询做 1% EXPLAIN ANALYZE 抽样，退化即告警
     explain_sample_rate: float = 0.01
@@ -98,12 +102,13 @@ class Config:
 
     @property
     def embed_mode(self) -> str:
-        """B.10：编码是跟 API 共置（local）还是在独立进程（remote）。
+        """B.10：编码是跟 API 共置（local / onnx）还是在独立进程（remote）。
 
         health 的 latency_profile 用这个字段标注当前延迟属于哪种部署形态 ——
         共置的 retrieve 与隔离的 retrieve 不是同一个数，混着看会得出错误预算。
+        onnx 也是进程内推理，所以算共置。
         """
-        return "colocated" if self.embed_backend == "local" else "isolated"
+        return "colocated" if self.embed_backend in ("local", "onnx") else "isolated"
 
 
 def load() -> Config:
@@ -132,11 +137,19 @@ def load() -> Config:
         backend = "remote" if service_url else "local"
     if backend not in ("local", "remote", "onnx"):
         raise RuntimeError(f"EMBEDDING_BACKEND 只能是 local / remote / onnx，收到 {backend!r}")
-    if backend == "onnx":
-        # B.9 任务 2 只做了调研，没实现。这里如实拒绝，不静默退化成 torch 冒充量化。
+    # onnx 后端（B.11 起可用）。模型文件必须真实存在 —— 启动时就查，
+    # 绝不在第一个请求进来时才报「文件没找到」。
+    onnx_model_path = os.environ.get(
+        "ONNX_MODEL_PATH", str(PROJECT_ROOT / "bge-m3-onnx" / "model_int8.onnx")
+    ).strip()
+    onnx_threads = int(os.environ.get("ONNX_THREADS", "4"))
+    if onnx_threads < 1:
+        raise RuntimeError(f"ONNX_THREADS 必须 ≥ 1，收到 {onnx_threads}")
+    if backend == "onnx" and not Path(onnx_model_path).exists():
         raise RuntimeError(
-            "EMBEDDING_BACKEND=onnx 尚未实现（B.9 只完成 ONNX INT8 调研，见报告 §7）。"
-            "当前请使用 local 或 remote。"
+            f"EMBEDDING_BACKEND=onnx 但模型文件不存在：{onnx_model_path}\n"
+            "生成方式：api/b11-onnx-export.py --stage export --legacy "
+            "→ api/b11-onnx-eval.py --stage quantize --per-channel"
         )
     if backend == "local" and service_url:
         raise RuntimeError(
@@ -165,6 +178,8 @@ def load() -> Config:
         embed_model=os.environ.get("EMBED_MODEL", "BAAI/bge-m3"),
         embed_dim=int(os.environ.get("EMBED_DIM", "1024")),
         embedding_service_url=service_url,
+        onnx_model_path=onnx_model_path,
+        onnx_threads=onnx_threads,
         explain_sample_rate=float(os.environ.get("EXPLAIN_SAMPLE_RATE", "0.01")),
         host=os.environ.get("API_HOST", "127.0.0.1"),
         port=int(os.environ.get("API_PORT", "8000")),

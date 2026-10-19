@@ -141,14 +141,34 @@ state = State()
 # ---------------------------------------------------------------------------
 
 PROFILE_SOURCES = ("_b10-arm-A-r*.json", "_b10-arm-B-r*.json", "_b10-arm-C-r*.json",
-                   "_b9-http-bench.json")
+                   "_b9-http-bench.json",
+                   "_b11-http-bench-onnx.json", "_b11-http-bench-torch.json")
 
 # 压测文件 → 它属于哪种部署形态。混着读会把「共置的 190ms」当成「隔离的 190ms」，
 # 那正是 B.10 要消灭的错误，所以这里必须按形态匹配，匹配不上就明确标 mismatch。
+#
+# B.11 补了两个共置压测（torch 与 onnx 同机同批 query 的 A/B）。两者都是共置，
+# 但**编码后端不同**——torch 的 115ms 与 onnx 的 21ms 不能混用，所以按 backend 再分一层。
 PROFILE_MODE_PREFIX = {
-    "colocated": ("_b10-arm-A-", "_b9-http-bench"),   # B.9 的 API 也是共置
+    "colocated": ("_b10-arm-A-", "_b9-http-bench", "_b11-http-bench-"),
     "isolated": ("_b10-arm-B-", "_b10-arm-C-"),
 }
+
+# 共置压测文件 → 它用的是哪个编码后端（B.11）。
+# onnx 的产物名字里没有后端信息，靠这里显式声明，不靠猜文件名。
+PROFILE_ENGINE_OF_FILE = {
+    "_b10-arm-A-": "torch",
+    "_b9-http-bench": "torch",
+    "_b11-http-bench-onnx": "onnx",
+    "_b11-http-bench-torch": "torch",
+}
+
+
+def _engine_of(name: str) -> str:
+    for prefix, eng in PROFILE_ENGINE_OF_FILE.items():
+        if name.startswith(prefix):
+            return eng
+    return "unknown"
 
 
 def load_latency_profile(cfg: Config | None = None) -> dict[str, Any] | None:
@@ -163,11 +183,15 @@ def load_latency_profile(cfg: Config | None = None) -> dict[str, Any] | None:
         return None
     mode = cfg.embed_mode if cfg else None
 
-    def newest(prefixes: tuple[str, ...]) -> Path | None:
+    def newest(prefixes: tuple[str, ...], engine: str | None = None) -> Path | None:
         cands: list[tuple[float, Path]] = []
         for pat in PROFILE_SOURCES:
             for p in cache.glob(pat):
                 if prefixes and not p.name.startswith(prefixes):
+                    continue
+                # 共置压测还要匹配编码后端：torch 的 encode 115ms 与 onnx 的 21ms
+                # 是两个世界，拿错了会把预算算错一个数量级。
+                if engine and _engine_of(p.name) != engine:
                     continue
                 cands.append((p.stat().st_mtime, p))
         if not cands:
@@ -175,7 +199,11 @@ def load_latency_profile(cfg: Config | None = None) -> dict[str, Any] | None:
         cands.sort(key=lambda t: t[0], reverse=True)
         return cands[0][1]
 
-    latest = newest(PROFILE_MODE_PREFIX.get(mode or "", ()))
+    # 后端：onnx / local(torch) / remote。remote 没有对应的共置压测，交给形态匹配兜底。
+    engine = (cfg.embed_backend if cfg else None) if mode == "colocated" else None
+    latest = newest(PROFILE_MODE_PREFIX.get(mode or "", ()), engine)
+    if latest is None and engine:
+        latest = newest(PROFILE_MODE_PREFIX.get(mode or "", ()))  # 退化到同形态任意后端
     matched = latest is not None
     if latest is None:
         latest = newest(())          # 回退：任何压测结果都行，但会标 mismatch
@@ -194,17 +222,22 @@ def load_latency_profile(cfg: Config | None = None) -> dict[str, Any] | None:
         v = summary.get(key, {}).get("p50") if isinstance(summary.get(key), dict) else None
         return v
 
+    file_engine = _engine_of(latest.name)
     return {
         "mode": mode,
         "source": latest.name,
         "mode_match": matched,
+        "engine": file_engine,
+        "engine_match": (file_engine == engine) if engine else None,
         "generated_at": data.get("generated_at"),
         "encode_p50_ms": p50("encode_ms"),
         "retrieve_p50_ms": p50("retrieve_ms"),
         "e2e_p50_ms": p50("e2e_ms"),
         "note": ("来自最近一次压测（缓存在内存，health 不实时跑压测）。"
                  "colocated 与 isolated 的 retrieve 相差数倍，"
-                 "mode_match=false 表示这次数据与当前部署形态不一致，别直接拿去做预算。"),
+                 "mode_match=false 表示这次数据与当前部署形态不一致，别直接拿去做预算。"
+                 "⚠ B.11 实测：换 ONNX 只改变 encode（torch 115ms → onnx 21ms），"
+                 "retrieve 两臂同量级（31.6 vs 30.8 ms）——别指望换后端能改善 retrieve。"),
     }
 
 

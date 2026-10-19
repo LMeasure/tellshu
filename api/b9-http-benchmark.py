@@ -91,6 +91,12 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=20, help="取前 N 条 counted query")
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--warmup", type=int, default=8, help="warmup 请求数（丢弃，不统计）")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="输出路径；默认 _b9-http-bench.json。"
+             "B.11 用 --out server/.crawl-cache/_b11-http-bench-onnx.json，避免覆盖 B.9 基线",
+    )
     args = ap.parse_args()
 
     if not args.run:
@@ -169,7 +175,8 @@ def main() -> int:
         "per_query": rows,
     }
     CACHE.mkdir(parents=True, exist_ok=True)
-    OUT_JSON.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path = Path(args.out) if args.out else OUT_JSON
+    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print()
     print(f"{'':<18}{'P50':>10}{'P95':>10}{'P99':>10}{'max':>10}")
@@ -185,7 +192,7 @@ def main() -> int:
     print()
     print(f"验收：返回 ≥8 行 {out['acceptance']['results_ge_8']}/{len(rows)}，"
           f"空结果 {len(empty)}，Top1 命中 {out['recall']['top1']}/{len(rows)}")
-    print(f"写入 {OUT_JSON}")
+    print(f"写入 {out_path}")
     return 0
 
 

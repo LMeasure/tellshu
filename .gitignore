@@ -45,3 +45,41 @@ embedding setting
 
 # ── WorkBuddy 会话与记忆目录（工具内部状态，非产品代码）──────
 .workbuddy/
+
+# ── Windows 保留设备名幽灵文件（nul：能枚举、打不开、删不掉）──
+# 2026-10-17 spike 期误建，22 字节，Remove-Item/.NET Delete 均「访问被拒绝」；
+# 加忽略行防止 git 遍历把它当未跟踪文件（server/.gitignore 同有此行）
+nul
+
+# ── 抓取缓存 ────────────────────────────────────────────────
+# crawl cache
+.crawl-cache/
+server/.crawl-cache/
+
+# ── 实验产物（体积大 / 可复现，不进仓库）────────────────────
+# experiments
+*.hnsw-exp-matrix.json
+*.hnsw-smoke.json
+*.exact-baseline-latency.json
+*.hnsw-exp-probe.json
+*.hnsw-summary.txt
+*.candidate-render.md
+
+# ── Python 运行产物 ─────────────────────────────────────────
+# python
+__pycache__/
+*.pyc
+
+# ── 临时脚本 ────────────────────────────────────────────────
+# temporary scripts
+.tmp_*.py
+
+# ── 生成的向量数据 ──────────────────────────────────────────
+# generated data
+data/
+*.embedding
+*.vector
+
+# ── ONNX 模型产物（B.11）─────────────────────────────────
+# 543MB 的量化模型不进仓库；生成方式见 api/b11-onnx-export.py 与 reports/stage-b11-execution-report.md
+bge-m3-onnx/

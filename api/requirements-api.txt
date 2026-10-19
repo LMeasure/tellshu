@@ -26,5 +26,17 @@ numpy>=2.0
 # 配 EMBEDDING_SERVICE_URL 即可，不需要上面三个 ML 依赖。
 #
 # ---- 编码后端：onnx ----
-# B.9 只完成 ONNX INT8 调研，**尚未实现**。config.py 会在启动时明确报错，
-# 不会静默退化成 torch 冒充量化。
+# B.11 已实现（EMBEDDING_BACKEND=onnx）。跑 ONNX 后端只装下面两个即可，
+# 不需要 torch / sentence-transformers —— 这正是 ONNX 的意义：把常驻内存
+# 从 ~2.2GB（torch）压到 ~1.3GB（INT8），省下的内存留给 PG 页缓存。
+onnxruntime==1.31.0
+transformers==5.19.0
+#
+# 生成 ONNX 模型额外需要（一次性，不需要常驻生产环境）：
+#   torch（导出 FP32 用；本机 2.14.1+cpu）
+#   sentence-transformers（取骨干 + 参考向量）
+#   onnxruntime 的量化工具已随 onnxruntime 一起装好（onnxruntime.quantization）
+#
+# 本机实测：onnx 1.23.2 也在，但量化/推理路径不直接用它；
+# onnxscript **没装上**（PyPI 502），所以导出走的是 legacy TorchScript 导出器，
+# 见 reports/stage-b11-execution-report.md §2。
