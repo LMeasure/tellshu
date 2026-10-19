@@ -15,6 +15,7 @@
 import type { BookChapter } from '../lib/epub'
 import type { MaskMode, MaskTarget } from '../lib/masking'
 import type { DiagnoseLevel } from '../lib/diagnostic'
+import type { StudyNoteRecord, TranscriptRecord } from './transcript/types'
 
 /** 诊断等级沿用 lib/diagnostic 的定义，避免两处各写一份后漂移 */
 export type { DiagnoseLevel }
@@ -139,10 +140,13 @@ export interface ReadingDoc {
   ext?: string
 }
 
-/** 阅读/听书时长按日累计（计入个人中心可视化，见 06 §7.3） */
+/** 学习时长按日累计（计入个人中心可视化，见 06 §7.3） */
 export interface ReadingTimeRow {
   date: string // YYYY-MM-DD
+  /** 阅读/听书秒数 */
   total_seconds: number
+  /** 默写秒数（学习时间的「默写」子分支，随记忆模式计时累计） */
+  dictation_seconds?: number
   /** 同步字段（v8）：owner 多端隔离 */
   owner?: string
   updated_at?: number
@@ -380,6 +384,9 @@ export interface StorageSchema {
   session: SessionRow
   sync_queue: SyncQueueRow
   sync_meta: SyncMetaRow
+  // ↓ v9 新增：ASR 字幕持久化 + AI 学习稿（Phase 2 M1）
+  transcripts: TranscriptRecord
+  studyNotes: StudyNoteRecord
 }
 
 export type TableName = keyof StorageSchema
@@ -402,6 +409,8 @@ export interface PrimaryKeyMap {
   session: string
   sync_queue: string
   sync_meta: string
+  transcripts: string
+  studyNotes: string
 }
 
 export type PrimaryKey<K extends TableName> = PrimaryKeyMap[K]
@@ -427,6 +436,8 @@ export interface DailyStat {
   mastered: number
   /** 当日阅读/听书秒数 */
   readingSeconds: number
+  /** 当日默写秒数（学习时间的「默写」子分支）；老存档无此字段 → 0 */
+  dictationSeconds?: number
 }
 
 export interface MonthlyStat {

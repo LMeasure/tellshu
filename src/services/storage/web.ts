@@ -25,6 +25,9 @@
  *   session      user_id
  *   sync_queue   id, entity, entity_id, created_at, attempts
  *   sync_meta    key
+ *   ----- 以下为 v9 新增（Phase 2 M1：ASR 字幕 + 学习稿）-----
+ *   transcripts  id, created_at, source
+ *   studyNotes   id, transcript_id, status, created_at, updated_at, source
  */
 
 import Dexie, { type Table } from 'dexie'
@@ -60,6 +63,8 @@ const INDEXED_FIELDS: Record<TableName, readonly string[]> = {
   session: ['user_id'],
   sync_queue: ['id', 'entity', 'entity_id', 'created_at', 'attempts'],
   sync_meta: ['key'],
+  transcripts: ['id', 'created_at', 'source'],
+  studyNotes: ['id', 'transcript_id', 'status', 'created_at', 'updated_at', 'source'],
 }
 
 const TABLE_NAMES = Object.keys(INDEXED_FIELDS) as TableName[]
@@ -81,6 +86,8 @@ class ShushuDB extends Dexie {
   session!: Table<StorageSchema['session'], string>
   sync_queue!: Table<StorageSchema['sync_queue'], string>
   sync_meta!: Table<StorageSchema['sync_meta'], string>
+  transcripts!: Table<StorageSchema['transcripts'], string>
+  studyNotes!: Table<StorageSchema['studyNotes'], string>
 
   constructor() {
     super('shushu-learn')
@@ -154,6 +161,14 @@ class ShushuDB extends Dexie {
           row.updated_at = row.updated_at ?? now
         })
       })
+    // v9：ASR 字幕 + 学习稿持久化（Phase 2 M1，2026-10-18 拍板）
+    //   · transcripts：id 与 ASR job_id 对齐，重复 done 幂等覆盖
+    //   · studyNotes：transcript_id 建索引，按它 upsert 不追加（评审冻结）
+    //   · 两张新表，纯新增无 upgrade；不进 sync_queue（同步链只服务词典数据）
+    this.version(9).stores({
+      transcripts: 'id, created_at, source',
+      studyNotes: 'id, transcript_id, status, created_at, updated_at, source',
+    })
   }
 }
 
