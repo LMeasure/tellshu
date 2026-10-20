@@ -1,24 +1,36 @@
 /**
- * 轻量词形还原（Phase 2 M3）
+ * 轻量词形还原（Phase 2 M3；M3 边界回填 2026-10-20）
  * ------------------------------------------------------------------
  * 场景：学习稿 vocabulary 的词形来自 LLM 输出（lemma 倾向，如
  * "look" / "looking" 混用），与字幕原文、词库词形都可能不同。
  * 查本地 dictEntries 前先扩充候选词形，提高命中率。
  *
  * 口径（诚实边界，写进注释供审）：
- *   · 这是**规则近似**，不是完整 NLP 词形还原器——不追求 100% 正确，
- *     只求把常见变形收进候选集合；查不到就返回未命中，绝不编造词条。
- *   · 候选集合含原词本身，顺序即查询优先级（原词优先）。
+ *   · 这是**规则近似 + 例外表**的组合：不规则变形（went→go）由
+ *     irregular.ts 例外表查表覆盖（高频动词过去式/过去分词 + 不规则
+ *     复数）；规则只处理常规后缀变形。低频不规则词仍可能未命中，
+ *     走 null 不编造。
+ *   · 候选集合含原词本身，顺序即查询优先级（例外表原形 > 原词）。
  *   · 短语（含空格）按空格切词，逐词做单词级还原再重组；为控制组合
  *     爆炸，仅剥最常见后缀（-ing/-ed/-s/-es），且总组合数有上限。
  *   · 还原规则不依赖任何外部词典，纯字符串操作，可单测、确定性。
  */
 
-/** 单词级候选：原词优先，随后按规则剥后缀。 */
+import { IRREGULAR_MAP } from './irregular'
+
+/** 单词级候选：例外表优先，原词其次，随后按规则剥后缀。 */
 export function lemmaCandidatesOfWord(word: string): string[] {
   const raw = word.trim()
   if (raw === '') return []
   const lower = raw.toLowerCase()
+
+  // 1) 例外表优先——不规则变形直接返回 [原形, 原词]，不再走规则链路
+  //    （规则对不规则词只会产出噪声候选：went → we / wentt）
+  const irregular = IRREGULAR_MAP[lower]
+  if (irregular !== undefined && irregular !== lower) {
+    return [irregular, raw]
+  }
+
   const out: string[] = [raw]
   const seen = new Set<string>([lower])
 
@@ -78,9 +90,12 @@ export function lemmaCandidates(phrase: string): string[] {
   const perWord: string[][] = words.map((w) => {
     // 功能词（to / a / the / of …）不还原，避免无意义组合
     if (FUNCTION_WORDS.has(w.toLowerCase())) return [w]
+    const lower = w.toLowerCase()
+    // 例外表优先（与单词路径同口径）：不规则变形直接给 [原形, 原词]
+    const irregular = IRREGULAR_MAP[lower]
+    if (irregular !== undefined && irregular !== lower) return [w, irregular]
     // 短语里每词只给：原形 + 去 ing/ed/s 三类最常见还原，控制组合数
     const candidates = [w]
-    const lower = w.toLowerCase()
     if (lower.endsWith('ing') && lower.length > 4) {
       const stem = lower.slice(0, -3)
       candidates.push(stem, `${stem}e`)
