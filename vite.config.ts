@@ -121,9 +121,23 @@ const DATA_INDEX_RE =
  *   - GET（如增量同步）→ 被 SPA history 回退接住，返回 200 + index.html，
  *     前端把 HTML 当 JSON 解析得到 null，炸出 TypeError。
  * 代理统一转发给本机 8787 的 shutree 后端（后端必须同时在跑）。
+ *
+ * /api/discover 书籍检索（2026-10-20，M4 之后接入）：
+ * 检索 API 是独立的 FastAPI 只读服务（默认 8000），不是 8787 的 Node 后端
+ * （Node 侧没有 discover 路由，拆分无冲突）。FastAPI 未配 CORS，
+ * 所以前端同样走同源 /api/discover 路径，由这里转发。
+ * ⚠️ 键序即优先级：`/api/discover` 必须先于 `/api` 注册，否则
+ * `/api/discover/*` 会被 8787 接走（SPA 回退 → 前端拿到 HTML）。
+ * 生产部署时需要一个反向代理规则：/api/discover/* → 检索 API 服务。
  */
 const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8787'
+const DISCOVER_API_PROXY_TARGET =
+  process.env.VITE_DISCOVER_API_PROXY_TARGET || 'http://127.0.0.1:8000'
 const apiProxy = {
+  '/api/discover': {
+    target: DISCOVER_API_PROXY_TARGET,
+    changeOrigin: false, // 同机转发，保持 Host 即可
+  },
   '/api': {
     target: API_PROXY_TARGET,
     changeOrigin: false, // 同机转发，保持 Host 即可

@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test_features.ts && tsx scripts/test_data_client.ts && tsx scripts/test_storage.ts && tsx scripts/test_services.ts && tsx scripts/test_learning_loop.ts && tsx scripts/test_readings.ts && tsx scripts/test_review_quiz.ts && tsx scripts/test_bilingual.ts && tsx scripts/test_reader_v2.ts && tsx scripts/test_fitpaging.ts && tsx scripts/test_word_detail.ts && tsx scripts/test_sync.ts && tsx scripts/test_convert.ts && tsx scripts/test_transcript.ts && tsx scripts/test_transcript_store.ts && tsx scripts/test_study_note_generate.ts && tsx scripts/test_study_note_dict.ts && tsx scripts/test_irregular.ts && tsx scripts/test_vocab_senses.ts",
+    "test": "tsx scripts/test_features.ts && tsx scripts/test_data_client.ts && tsx scripts/test_storage.ts && tsx scripts/test_services.ts && tsx scripts/test_learning_loop.ts && tsx scripts/test_readings.ts && tsx scripts/test_review_quiz.ts && tsx scripts/test_bilingual.ts && tsx scripts/test_reader_v2.ts && tsx scripts/test_fitpaging.ts && tsx scripts/test_word_detail.ts && tsx scripts/test_sync.ts && tsx scripts/test_convert.ts && tsx scripts/test_transcript.ts && tsx scripts/test_transcript_store.ts && tsx scripts/test_study_note_generate.ts && tsx scripts/test_study_note_dict.ts && tsx scripts/test_irregular.ts && tsx scripts/test_vocab_senses.ts && tsx scripts/test_discover.ts",
     "test:features": "tsx scripts/test_features.ts",
     "test:data": "tsx scripts/test_data_client.ts",
     "test:storage": "tsx scripts/test_storage.ts",
@@ -20,7 +20,8 @@
     "test:review-quiz": "tsx scripts/test_review_quiz.ts",
     "test:bilingual": "tsx scripts/test_bilingual.ts",
     "test:reader-v2": "tsx scripts/test_reader_v2.ts",
-    "test:word-detail": "tsx scripts/test_word_detail.ts"
+    "test:word-detail": "tsx scripts/test_word_detail.ts",
+    "check:book-ui": "tsx scripts/check_book_search_ui.ts"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.0",

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { OfflineNotice } from '@/components/OfflineNotice'
 import { useOnline } from '@/lib/offline'
+import { BookSearchPanel } from '@/components/discover/BookSearchPanel'
 import { repository } from '@/data/repository'
 import type { ContentCourse, LinguaBankLevel, LinguaTheme } from '@/data/types'
 
@@ -18,7 +19,7 @@ const FILTERS = [
   { key: 'duration', label: '时长' },
 ]
 
-/** 发现页：课程卡片流 + 全量词库（主题 / 难度双层）+ 笔记流（Phase 2） */
+/** 发现页：课程卡片流 + 全量词库（主题 / 难度双层）+ 书籍语义检索（M4 之后）+ 笔记流（Phase 2） */
 export function Discover() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('courses')
@@ -42,6 +43,7 @@ export function Discover() {
         items={[
           { key: 'courses', label: '课程' },
           { key: 'bank', label: '词库' },
+          { key: 'books', label: '找书' },
           { key: 'notes', label: '笔记' },
         ]}
         active={tab}
@@ -159,6 +161,8 @@ export function Discover() {
             )}
           </div>
         </>
+      ) : tab === 'books' ? (
+        <BookSearchPanel />
       ) : (
         <EmptyState
           icon={NotebookPen}
