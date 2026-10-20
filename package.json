@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test_features.ts && tsx scripts/test_data_client.ts && tsx scripts/test_storage.ts && tsx scripts/test_services.ts && tsx scripts/test_learning_loop.ts && tsx scripts/test_readings.ts && tsx scripts/test_review_quiz.ts && tsx scripts/test_bilingual.ts && tsx scripts/test_reader_v2.ts && tsx scripts/test_fitpaging.ts && tsx scripts/test_word_detail.ts && tsx scripts/test_sync.ts && tsx scripts/test_convert.ts && tsx scripts/test_transcript.ts && tsx scripts/test_transcript_store.ts",
+    "test": "tsx scripts/test_features.ts && tsx scripts/test_data_client.ts && tsx scripts/test_storage.ts && tsx scripts/test_services.ts && tsx scripts/test_learning_loop.ts && tsx scripts/test_readings.ts && tsx scripts/test_review_quiz.ts && tsx scripts/test_bilingual.ts && tsx scripts/test_reader_v2.ts && tsx scripts/test_fitpaging.ts && tsx scripts/test_word_detail.ts && tsx scripts/test_sync.ts && tsx scripts/test_convert.ts && tsx scripts/test_transcript.ts && tsx scripts/test_transcript_store.ts && tsx scripts/test_study_note_generate.ts",
     "test:features": "tsx scripts/test_features.ts",
     "test:data": "tsx scripts/test_data_client.ts",
     "test:storage": "tsx scripts/test_storage.ts",

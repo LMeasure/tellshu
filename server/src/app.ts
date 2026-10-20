@@ -17,6 +17,8 @@ import { createDictionaryRouter } from './routes/dictionary';
 import { createHealthRouter } from './routes/health';
 import { createOcrRouter } from './routes/ocr';
 import { createTranslateRouter } from './routes/translate';
+import { createAiRouter } from './routes/ai';
+import path from 'path';
 
 /** 翻译服务超时（与 Paddle 超时解耦）。 */
 const TRANSLATE_TIMEOUT_MS = 15_000;
@@ -27,6 +29,8 @@ export interface AppDeps {
   pipeline: OcrPipeline;
   asr: AsrService;
   convertStore: ConvertStore;
+  /** 仅测试注入的打桩 fetch（默认未定义，走真实云端 LLM）。 */
+  aiFetchImpl?: typeof fetch;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -55,6 +59,9 @@ export function createApp(deps: AppDeps): express.Express {
       }),
     );
   }
+  
+// serve 静态 HTML
+  app.use(express.static(path.join(__dirname, '..')));
 
   app.use(express.json({ limit: '1mb' }));
 
@@ -80,6 +87,7 @@ export function createApp(deps: AppDeps): express.Express {
     }),
   );
   app.use('/api', createDictionaryRouter({ repository: deps.repository }));
+  app.use('/api', createAiRouter({ config: deps.config.ai, fetchImpl: deps.aiFetchImpl }));
   app.use(
     '/api',
     createAdminRouter({ pipeline: deps.pipeline, adminApiKey: deps.config.adminApiKey }),

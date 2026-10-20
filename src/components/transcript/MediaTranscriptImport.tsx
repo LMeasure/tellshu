@@ -13,6 +13,7 @@ import { transcribeAndSave } from '@/domain/transcript/transcribe'
 import { toSrt, toTxt, toVtt } from '@/domain/transcript/subtitle'
 import type { Transcript } from '@/domain/transcript/types'
 import { ApiRequestError } from '@/data/asrClient'
+import { StudyNotePanel } from '@/components/transcript/StudyNotePanel'
 
 /**
  * 音视频转字幕（Phase 1）
@@ -141,6 +142,14 @@ export function MediaTranscriptImport() {
     el.currentTime = seg.start
     void el.play().catch(() => undefined)
     setActiveIndex(index)
+  }
+
+  /** 秒级跳转（学习稿词汇回匹给出的是段起点秒，不是 index）。 */
+  function seekToSeconds(seconds: number): void {
+    const el = mediaElRef.current
+    if (el === null) return
+    el.currentTime = seconds
+    void el.play().catch(() => undefined)
   }
 
   function exportAs(kind: 'txt' | 'srt' | 'vtt'): void {
@@ -320,6 +329,9 @@ export function MediaTranscriptImport() {
           </CardBody>
         </Card>
       )}
+
+      {/* 学习稿面板（M2）：字幕完成后可用；503 未接入走空态引导 */}
+      {transcript !== null && <StudyNotePanel transcript={transcript} onSeek={seekToSeconds} />}
     </div>
   )
 }

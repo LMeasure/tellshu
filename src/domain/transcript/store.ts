@@ -18,6 +18,7 @@
 
 import { storage } from '@/services/storage'
 import type {
+  StudyNoteBilingualNote,
   StudyNoteRecord,
   StudyNoteSource,
   StudyNoteStatus,
@@ -75,7 +76,8 @@ export async function listTranscriptRecords(): Promise<TranscriptRecord[]> {
 export interface StudyNoteDraft {
   transcript_id: string
   summary: string
-  bilingual_notes: string
+  /** 逐句结构化双语解释（M2 契约；M1 占位期曾是整段 string，已升级） */
+  bilingual_notes: StudyNoteBilingualNote[]
   key_points: string[]
   vocabulary: StudyNoteVocabulary[]
   status?: StudyNoteStatus

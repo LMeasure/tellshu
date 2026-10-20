@@ -236,6 +236,49 @@ export interface AsrJobResponse {
 }
 
 // -----------------------------------------------------------------------------
+// AI 学习稿生成（Phase 2 M2：字幕 -> 结构化学习稿，OpenAI 兼容 LLM 流式）
+// -----------------------------------------------------------------------------
+
+/** 重点词汇：word/pos/gloss 三项为契约必需（pos 供前端本地词库精确命中）；context 由前端回匹 segments 时补，LLM 不产出。 */
+export interface StudyNoteVocabulary {
+  word: string;
+  pos: string;
+  gloss: string;
+}
+
+/** 双语解释一条：en 必须是字幕中出现过的原句（可截取完整分句），不得编造。 */
+export interface StudyNoteBilingualNote {
+  en: string;
+  zh: string;
+}
+
+/** LLM 返回的学习稿四要素（summary 与双语解释拆开，四者独立可编辑）。 */
+export interface StudyNotePayload {
+  summary: string;
+  bilingual_notes: StudyNoteBilingualNote[];
+  key_points: string[];
+  vocabulary: StudyNoteVocabulary[];
+}
+
+/** POST /api/ai/study-notes 请求体：直接复用 canonical transcript 结构。 */
+export interface StudyNoteRequest {
+  transcript: AsrTranscript;
+}
+
+/**
+ * SSE 事件协议（POST /api/ai/study-notes，Content-Type: text/event-stream）：
+ *   data: {"type":"delta","text":"..."}                                 逐字增量
+ *   data: {"type":"done","note":{ summary, bilingual_notes, ... }}      完成
+ *   data: {"type":"error","code":"timeout_first_token","message":"..."} 失败
+ * 注：fetch + ReadableStream 消费（EventSource 只能 GET）；客户端断开时
+ * 服务端 abort 上游，不再回 error 事件。
+ */
+export type StudyNoteEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'done'; note: StudyNotePayload }
+  | { type: 'error'; code: string; message: string };
+
+// -----------------------------------------------------------------------------
 // 解析规则（来自「使用说明」页，作用于同 source_book 的后续页）
 // -----------------------------------------------------------------------------
 

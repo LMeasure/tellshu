@@ -45,6 +45,25 @@ export interface ConvertConfig {
   storageDir: string;
 }
 
+/**
+ * AI 学习稿生成（Phase 2 M2：OpenAI 兼容云端 LLM，SSE 流式）。
+ * 未配置时接口如实 503「AI 服务未接入」，服务器正常启动、不崩。
+ *   baseUrl            完整端点或基址都接受：已含 /chat/completions 则原样用，
+ *                       否则自动拼 /chat/completions
+ *   apiKey / model     凭据与模型名（只在 .env，不进日志/前端）
+ *   firstTokenMs       首 token 超时（防上游卡死，默认 30000）
+ *   streamMs           总流式超时（防生成过长，默认 120000）
+ *   maxSegments        单次请求允许的最大段数（防超大 transcript，默认 1200）
+ */
+export interface AiConfig {
+  baseUrl: string | null;
+  apiKey: string | null;
+  model: string | null;
+  firstTokenMs: number;
+  streamMs: number;
+  maxSegments: number;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -61,6 +80,7 @@ export interface AppConfig {
   asr: AsrProviderConfig;
   storageDir: string;
   convert: ConvertConfig;
+  ai: AiConfig;
 }
 
 function required(name: string): string {
@@ -106,6 +126,14 @@ function parseTimeout(raw: string | null, fallback = 30_000): number {
   if (raw === null) return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 1_000 || value > 300_000) return fallback;
+  return value;
+}
+
+/** AI_MAX_SEGMENTS：单次请求最大段数，越界回退默认 1200（与 parseTimeout 同风格）。 */
+function parseMaxSegments(raw: string | null): number {
+  if (raw === null) return 1_200;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > 5_000) return 1_200;
   return value;
 }
 
@@ -171,6 +199,16 @@ export function loadConfig(): AppConfig {
       storageDir: path.isAbsolute(convertStorageDirInput)
         ? convertStorageDirInput
         : path.resolve(SERVER_ROOT, convertStorageDirInput),
+    },
+    ai: {
+      // 三项齐备才启用；任一缺失 → 路由层如实 503「AI 服务未接入」，
+      // 服务器正常启动、不崩（与 translate / asr 同构）
+      baseUrl: optional('AI_BASE_URL'),
+      apiKey: optional('AI_API_KEY'),
+      model: optional('AI_MODEL'),
+      firstTokenMs: parseTimeout(optional('AI_FIRST_TOKEN_TIMEOUT_MS'), 30_000),
+      streamMs: parseTimeout(optional('AI_STREAM_TIMEOUT_MS'), 120_000),
+      maxSegments: parseMaxSegments(optional('AI_MAX_SEGMENTS')),
     },
   };
 }

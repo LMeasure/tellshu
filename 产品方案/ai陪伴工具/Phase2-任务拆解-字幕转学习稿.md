@@ -216,3 +216,37 @@ M4 ── 2.4（书籍用例增量接入）                依赖检索 API 决�
 **没什么没做**：① 历史字幕列表 UI（属 M2，与学习稿入口一并做）；② studyNotes 流式读写（M2）；③ 前提卡 §5 页面清单仍缺 Phase 1 的「音视频字幕」页签记载（Phase 1 遗留的陈旧，按约定只在交付记录指出、未擅改）；④ 落库失败目前只 console 告警，UI 无提示（结果仍可看可导出，判定为可接受）。
 
 **需要你决策什么**：无。M2（学习稿生成）开工前只需要 AI 端点三值（base_url / model / key）进 `server/.env`。
+
+---
+
+## 7. M2 交付记录（2026-10-20）
+
+**改了什么**
+
+*服务端（新模块 + 半成品脚手架演进）*
+- `server/src/config.ts`：`loadConfig` 新增 `ai:` 装配（baseUrl / apiKey / model / firstTokenMs=30000 / streamMs=120000 / maxSegments=1200；越界回退默认）；修复了 `AiConfig` 接口存在但未装配的既有 typecheck 红号
+- `server/src/llm.ts`（**重写**，原为 demo 版）：`streamLLM` 流式调用（AiConfig 注入、双超时、外部 signal 中断、SSE 行解析、错误分类 `LlmError(kind)` 与 `LLM_ERROR_STATUS` 映射）
+- `server/src/llmStudyNote.ts`（新）：四要素 prompt 构造、`parseStudyNoteRequest` 请求体守卫、`validateStudyNotePayload` 契约校验（坏项丢弃 / 缺 pos 回退空串 / 重复词去重 / 全空判败）、`runStudyNoteGeneration` 编排
+- `server/src/routes/ai.ts`（**重写**，废弃 demo 的 `GET /ai/stream?word=`）：`POST /api/ai/study-notes` → SSE（delta / done / error 三事件）；未接入 503 与坏请求 400 走写头前的统一 JSON；客户端断开 abort 上游、`res.on('error')` 防未捕获异常；限流 10 次/小时/IP；`fetchImpl` 仅测试注入
+- `server/src/types.ts`：新增 `StudyNoteVocabulary` / `StudyNoteBilingualNote` / `StudyNotePayload` / `StudyNoteRequest` / `StudyNoteEvent`
+- `server/src/app.ts` / `server/.env.example`：接线与 AI_* 六项模板（key 只进 .env）
+- `server/test/llm.test.ts`（新，23 测）：流式累加、[DONE]/坏行容忍、上游错、双超时、外部中断、契约校验、请求体守卫、路由冒烟（503/400/SSE 全链路/断开即 abort 上游）
+
+*前端*
+- `src/data/llmClient.ts`（新）：fetch + ReadableStream 手工解析 SSE（EventSource 只能 GET）；`ApiRequestError(503)` 走未接入引导；`StudyNoteRequestError(code)` 透传 SSE error
+- `src/domain/studyNote/generate.ts`（新）：与 server 同口径的契约校验、`matchVocabularyContext` 语境回匹（word 字幕段命中记 context + segment_start；未命中不硬造）、`generateAndSaveStudyNote` 编排（完成即 upsert，status=ready）
+- `src/domain/transcript/types.ts` / `store.ts`：`bilingual_notes` 由整段 string 升级为 `StudyNoteBilingualNote[]`；`StudyNoteVocabulary` 增 `segment_start?: number`
+- `src/components/transcript/StudyNotePanel.tsx`（新）：生成入口 / 生成中进度（累加字符数 + 骨架屏）/ 四要素分区展示 / 词汇点按跳转（无 segment_start 降级为不可点徽标，title 说明原因）/ user_modified 重生成覆盖确认（Dialog）
+- `src/components/transcript/MediaTranscriptImport.tsx`：字幕完成后挂载面板，新增 `seekToSeconds`（词汇跳转给的是段起点秒而非 index）
+- `scripts/test_study_note_generate.ts`（新，30 断言）+ `package.json` test 链
+
+**验证了什么**：前端四件套全绿——tsc 0 错 / `npm test` 16 套全过（新测试覆盖契约校验、回匹、SSE 全链路、503/invalid_payload/incomplete_stream 失败分类、二次生成覆盖幂等）/ build（PWA v1.3.0）/ check_pwa 10 项。server 三件套全绿——typecheck 0 错 / `node --test "dist/test/*.test.js"` 91/91 / build 通过。
+
+**对冻结结论的三处修正（落地时发现，如实记载）**
+1. **流式落库策略**：§2.2 曾冻结「生成期间节流更新 studyNotes」——单 JSON 契约下 partial 文本不可解析，节流写入只能存半截原文、无展示价值。改为**完成即写一次 upsert**；生成中进度只走内存态（delta 累加字数）。「中断恢复不做」的结论不变（刷新=重生成）。
+2. **bilingual_notes 形态**：M1 建表时 `bilingual_notes: string` 是 LLM 未接的占位；M2 按「四要素拆开、独立可编辑」升级为逐句结构化数组 `{en, zh}[]`（Dexie v9 表结构未动，仅字段类型升级，无 upgrade 逻辑）。
+3. **「脉冲逐字渲染」表述**：partial JSON 不可解析，无法逐字渲染结构化内容；生成中改为「已接收字符数 + 骨架屏」进度感知，完成即展示结构化学习稿。
+
+**没什么没做**：① 真实 LLM 联调 smoke（需 AI 端点三值进 `server/.env` 后由你触发）；② M3 词库打通（词汇命中本地 dictEntries / 未命中标「AI 生成」）；③ 历史字幕列表 UI；④ SSE 心跳未加（本地联调场景，前置代理若闲断流再议）。
+
+**需要你决策什么**：AI 端点三值（base_url / model / key）——`.env.example` 已有模板，真值按纪律只写 `server/.env`，值给我即可（或你自己填），随后跑一次真实生成 smoke。

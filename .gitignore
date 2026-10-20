@@ -8,7 +8,7 @@ dist-ssr/
 .vite/
 
 # 词库数据（410MB，不进仓库；由 D:\English\export_full_to_shushu.py 生成后上传对象存储）
-data/
+/data/
 
 # 环境变量（含密钥/自定义域名，不提交；.env.example 是模板，要提交）
 .env
@@ -34,8 +34,8 @@ Thumbs.db
 识图/
 # 第三方 UI 参考设计图（微信读书风格参考素材，非本项目自有资产）
 设计图/
-# 词库数据（410MB，由脚本生成后上传对象存储；data/ 已在上方覆盖，此处显式重申）
-data/
+# 词库数据重申（同上，仅根目录）
+/data/
 
 # ── 构建 / 工具临时产物 ─────────────────────────────────────
 vite.config.ts.timestamp-*.mjs
@@ -75,8 +75,8 @@ __pycache__/
 .tmp_*.py
 
 # ── 生成的向量数据 ──────────────────────────────────────────
-# generated data
-data/
+# generated data（仅根目录；src/data/ 是源码）
+/data/
 *.embedding
 *.vector
 

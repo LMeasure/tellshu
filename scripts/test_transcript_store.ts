@@ -96,7 +96,7 @@ async function testStudyNotes(): Promise<void> {
   const created = await upsertStudyNote({
     transcript_id: 'job-1',
     summary: '第一版摘要',
-    bilingual_notes: '第一版双语',
+    bilingual_notes: [{ en: 'Hello', zh: '你好' }],
     key_points: ['要点一'],
     vocabulary: vocab,
   })
@@ -109,7 +109,7 @@ async function testStudyNotes(): Promise<void> {
   const again = await upsertStudyNote({
     transcript_id: 'job-1',
     summary: '第二版摘要',
-    bilingual_notes: '第二版双语',
+    bilingual_notes: [{ en: 'world', zh: '世界' }],
     key_points: ['要点二'],
     vocabulary: [],
     status: 'ready',

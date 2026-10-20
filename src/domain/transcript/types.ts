@@ -72,8 +72,18 @@ export interface StudyNoteVocabulary {
   pos: string
   /** AI 生成的双语解释 */
   gloss: string
-  /** 原文语境（可选） */
+  /** 原文语境（optional）：回匹字幕 segment 命中时填原句，未命中不硬造 */
   context?: string
+  /** 语境所在字幕段起点（秒）：词汇点击跳转播放用；未命中为 undefined */
+  segment_start?: number
+}
+
+/** studyNotes 表 · 双语解释契约（M2：四要素拆开、逐句结构化可编辑）。 */
+export interface StudyNoteBilingualNote {
+  /** 字幕中出现过的英文原句 */
+  en: string
+  /** 该句的中文翻译或语言点解释 */
+  zh: string
 }
 
 export type StudyNoteStatus = 'generating' | 'ready' | 'modified'
@@ -90,8 +100,8 @@ export interface StudyNoteRecord {
   id: string
   transcript_id: string
   summary: string
-  /** 双语解释（述树差异化主力，与 summary 拆开独立可编辑） */
-  bilingual_notes: string
+  /** 双语解释（述树差异化主力，与 summary 拆开独立可编辑；M2 起为逐句结构化数组） */
+  bilingual_notes: StudyNoteBilingualNote[]
   key_points: string[]
   vocabulary: StudyNoteVocabulary[]
   status: StudyNoteStatus
