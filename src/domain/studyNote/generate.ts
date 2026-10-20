@@ -25,6 +25,7 @@ import {
   upsertStudyNote,
   type StudyNoteDraft,
 } from '@/domain/transcript/store'
+import { resolveVocabDict } from '@/domain/studyNote/vocabDict'
 import type {
   StudyNoteBilingualNote,
   StudyNoteRecord,
@@ -121,6 +122,26 @@ export function matchVocabularyContext(
 }
 
 /* ------------------------------------------------------------------ */
+/* 词库命中（M3：本地 dictEntries，权威源）                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 逐个词汇查本地词库（词形还原后精确索引），命中记 dict_key；
+ * 未命中保持 undefined（UI 走「AI 生成」分支，绝不编造）。
+ * 串行执行：Dexie 查询轻量，词数 ≤ 15，无并发必要。
+ */
+export async function resolveVocabularyDictHits(
+  vocabulary: StudyNoteVocabulary[],
+): Promise<StudyNoteVocabulary[]> {
+  const out: StudyNoteVocabulary[] = []
+  for (const item of vocabulary) {
+    const hit = await resolveVocabDict(item.word).catch(() => null)
+    out.push(hit === null ? item : { ...item, dict_key: hit.dict_key })
+  }
+  return out
+}
+
+/* ------------------------------------------------------------------ */
 /* 生成编排                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -152,7 +173,9 @@ export async function generateAndSaveStudyNote(
     summary: payload.summary,
     bilingual_notes: payload.bilingual_notes,
     key_points: payload.key_points,
-    vocabulary: matchVocabularyContext(payload.vocabulary, transcript.segments),
+    vocabulary: await resolveVocabularyDictHits(
+      matchVocabularyContext(payload.vocabulary, transcript.segments),
+    ),
   }
   return upsertStudyNote({ ...draft, status: 'ready' })
 }

@@ -76,6 +76,13 @@ export interface StudyNoteVocabulary {
   context?: string
   /** 语境所在字幕段起点（秒）：词汇点击跳转播放用；未命中为 undefined */
   segment_start?: number
+  /**
+   * 本地词库命中的词条 key（word|pos；M3）。
+   * 有值 = 词库权威命中（UI 展示词库释义，gloss 降级为语境补充）；
+   * undefined = 未命中（UI 走「AI 生成」分支）。
+   * 查不到就留空，绝不编造（红线）。
+   */
+  dict_key?: string
 }
 
 /** studyNotes 表 · 双语解释契约（M2：四要素拆开、逐句结构化可编辑）。 */

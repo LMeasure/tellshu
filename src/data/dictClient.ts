@@ -9,8 +9,12 @@
  * 环境变量：VITE_API_BASE_URL（默认 /api；本地联调设为 http://127.0.0.1:8787/api）
  */
 
-/** 后端基址 */
-export const DICT_API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? '/api'
+/**
+ * 后端基址。
+ * 可选链是必须的：tsx 跑单测时 import.meta.env 为 undefined，
+ * 直接取属性会 TypeError（与 asrClient / llmClient 同一口径）。
+ */
+export const DICT_API_BASE: string = import.meta.env?.VITE_API_BASE_URL ?? '/api'
 
 /** 'parsed' = 解析完成、待人工确认（npm run db:confirm 后才入库） */
 export type ScanStatus = 'queued' | 'pending' | 'running' | 'parsed' | 'done' | 'failed'

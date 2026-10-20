@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookOpenCheck, RotateCcw, Sparkles, X } from 'lucide-react'
+import { BookOpenCheck, Clock3, Plus, RotateCcw, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardBody } from '@/components/ui/card'
@@ -9,8 +9,12 @@ import { ErrorState } from '@/components/ui/error-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getStudyNoteByTranscriptId } from '@/domain/transcript/store'
 import { generateAndSaveStudyNote } from '@/domain/studyNote/generate'
+import { getDictEntry } from '@/domain/dict'
+import { addToVocab, isInVocab, makeWordId } from '@/domain/learning'
 import type { StudyNoteRecord } from '@/domain/transcript/types'
+import type { StudyNoteVocabulary } from '@/domain/transcript/types'
 import type { Transcript } from '@/domain/transcript/types'
+import type { DictEntry } from '@/domain/types'
 import { ApiRequestError } from '@/data/asrClient'
 import { cn } from '@/lib/utils'
 
@@ -233,42 +237,10 @@ export function StudyNotePanel({
                 <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
                   重点词汇（{note.vocabulary.length}）
                 </h3>
-                <ul className="flex flex-wrap gap-2">
-                  {note.vocabulary.map((item, index) =>
-                    item.segment_start === undefined ? (
-                      <li
-                        key={`${item.word}-${index}`}
-                        title={`${item.gloss}（未在字幕中定位到 ${item.word}，无法跳转）`}
-                      >
-                        <Badge className="h-auto py-1">
-                          <span className="font-semibold">{item.word}</span>
-                          {item.pos !== '' && (
-                            <span className="ml-1 text-muted-foreground">{item.pos}</span>
-                          )}
-                          <span className="ml-1">{item.gloss}</span>
-                        </Badge>
-                      </li>
-                    ) : (
-                      <li key={`${item.word}-${index}`}>
-                        <button
-                          type="button"
-                          onClick={() => onSeek(item.segment_start as number)}
-                          className={cn(
-                            'inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs',
-                            'font-medium text-primary transition-colors hover:bg-primary/20 touch-target',
-                          )}
-                          aria-label={`${item.word}：${item.gloss}，跳转到对应时间段`}
-                          title={`${item.gloss} · 点按跳转到字幕位置`}
-                        >
-                          <span className="font-semibold">{item.word}</span>
-                          {item.pos !== '' && (
-                            <span className="text-muted-foreground">{item.pos}</span>
-                          )}
-                          <span>{item.gloss}</span>
-                        </button>
-                      </li>
-                    ),
-                  )}
+                <ul className="space-y-2">
+                  {note.vocabulary.map((item, index) => (
+                    <VocabCard key={`${item.word}-${index}`} item={item} onSeek={onSeek} />
+                  ))}
                 </ul>
               </section>
             )}
@@ -294,5 +266,138 @@ export function StudyNotePanel({
         当前学习稿含你的手动修改，重新生成会覆盖这些修改，且无法撤销。
       </Dialog>
     </Card>
+  )
+}
+
+/**
+ * 词汇卡（M3）：dict_key 命中 → 词库权威释义/音标/例句 + AI gloss 降级为
+ * 语境补充；未命中 → AI gloss + 「AI 生成」徽标。公共能力：点词跳转
+ * 字幕段（有 segment_start 时）、入生词本（复用 learning 链路，幂等）。
+ */
+function VocabCard({
+  item,
+  onSeek,
+}: {
+  item: StudyNoteVocabulary
+  onSeek: (seconds: number) => void
+}) {
+  const [entry, setEntry] = useState<DictEntry | null>(null)
+  const [added, setAdded] = useState(false)
+  const [error, setError] = useState('')
+
+  const fromDict = item.dict_key !== undefined
+
+  useEffect(() => {
+    let cancelled = false
+    setEntry(null)
+    setAdded(false)
+    setError('')
+    // 先取词条再按「命中词形」检查生词本——写入用的是 entry.word，
+    // 检查也必须用它，否则词形不一致时（looking vs look）刷新后状态会丢
+    const load = async (): Promise<void> => {
+      const found =
+        item.dict_key !== undefined
+          ? ((await getDictEntry(item.dict_key).catch(() => null)) ?? null)
+          : null
+      if (cancelled) return
+      setEntry(found)
+      const checkWord = found?.word ?? item.word
+      const v = await isInVocab(makeWordId({ word: checkWord })).catch(() => false)
+      if (!cancelled) setAdded(v)
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [item.dict_key, item.word])
+
+  async function add(): Promise<void> {
+    setError('')
+    try {
+      // 权威优先：命中词库用词条原形/释义/音标；未命中回落 LLM 产物
+      await addToVocab({
+        word: entry?.word ?? item.word,
+        pos: entry?.pos ?? item.pos,
+        ipa: entry?.phonetic ?? undefined,
+        definition_zh: entry?.definition_zh ?? item.gloss,
+      })
+      setAdded(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加入生词本失败')
+    }
+  }
+
+  const example = entry?.examples[0]
+
+  return (
+    <li className="rounded-lg border border-border/60 p-2.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {item.segment_start === undefined ? (
+          <span className="text-sm font-semibold" title={`未在字幕中定位到 ${item.word}，无法跳转`}>
+            {item.word}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSeek(item.segment_start as number)}
+            className="inline-flex items-center gap-1 text-sm font-semibold text-primary transition-colors hover:text-primary/80 touch-target"
+            aria-label={`${item.word}：${item.gloss}，跳转到对应时间段`}
+            title={`${item.gloss} · 点按跳转到字幕位置`}
+          >
+            <Clock3 className="h-3.5 w-3.5" />
+            {item.word}
+          </button>
+        )}
+        {item.pos !== '' && <span className="text-xs text-muted-foreground">{item.pos}</span>}
+        <Badge className={fromDict ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent'}>
+          {fromDict ? '词库' : 'AI 生成'}
+        </Badge>
+        <div className="ml-auto">
+          {added ? (
+            <span className="text-xs text-muted-foreground">已在生词本</span>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void add()}
+              aria-label={`把 ${item.word} 加入生词本`}
+              title="加入生词本（进入 SRS 复习）"
+            >
+              <Plus className="h-4 w-4" /> 入生词本
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-1.5 space-y-1 text-sm leading-relaxed">
+        {fromDict ? (
+          entry === null ? (
+            <Skeleton className="h-4 w-2/3" />
+          ) : (
+            <>
+              <p>
+                {entry.phonetic !== null && (
+                  <span className="mr-2 font-mono text-xs text-muted-foreground">/{entry.phonetic}/</span>
+                )}
+                {entry.definition_zh}
+              </p>
+              {example !== undefined && (
+                <p className="text-xs text-muted-foreground">
+                  {example.en}
+                  {example.zh !== null && ` —— ${example.zh}`}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">AI 语境补充：{item.gloss}</p>
+            </>
+          )
+        ) : (
+          <p>{item.gloss}</p>
+        )}
+        {item.context !== undefined && (
+          <p className="text-xs text-muted-foreground">字幕语境：{item.context}</p>
+        )}
+        {error !== '' && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    </li>
   )
 }

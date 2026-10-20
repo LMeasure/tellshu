@@ -77,7 +77,9 @@ const SRS_INTERVALS = [
 ]
 const PASS_THRESHOLD = 5
 
-function makeWordId(w: { id?: string; word: string; book?: string }): string {
+/** 生词本 word_id 口径：有 id 用 id，否则 book（无则 'x'）+ 小写词。
+ *  导出供学习稿词汇卡等处做「已在生词本」幂等检查（口径必须一致）。 */
+export function makeWordId(w: { id?: string; word: string; book?: string }): string {
   return w.id || `${w.book ?? 'x'}:${w.word.toLowerCase()}`
 }
 
@@ -513,6 +515,27 @@ export async function getTotalReadingSeconds(): Promise<number> {
   return all.reduce((s, r) => s + r.total_seconds, 0)
 }
 
+/** 累计当日默写时长（秒）：学习时间的「默写」子分支（与阅读时长同表分列，不混入 total_seconds） */
+export async function addDictationTime(seconds: number): Promise<void> {
+  if (seconds <= 0) return
+  const date = todayStr()
+  const row = await T.readingTime.get(date)
+  if (row) {
+    await T.readingTime.put({
+      ...row,
+      dictation_seconds: (row.dictation_seconds ?? 0) + seconds,
+    })
+  } else {
+    await T.readingTime.put({ date, total_seconds: 0, dictation_seconds: seconds })
+  }
+}
+
+/** 默写总时长（秒）（个人中心学习时间的「默写」子分支展示用） */
+export async function getTotalDictationSeconds(): Promise<number> {
+  const all = await T.readingTime.toArray()
+  return all.reduce((s, r) => s + (r.dictation_seconds ?? 0), 0)
+}
+
 /* ------------------------------------------------------------------
  * 诊断定级（见 01-PRD §5）
  * ------------------------------------------------------------------ */
@@ -566,6 +589,7 @@ export async function getDailyStats(days = 7): Promise<DailyStat[]> {
       mastered: vocab.filter((v) => v.mastered_at && dateStr(new Date(v.mastered_at)) === date)
         .length,
       readingSeconds: times.find((t) => t.date === date)?.total_seconds ?? 0,
+      dictationSeconds: times.find((t) => t.date === date)?.dictation_seconds ?? 0,
     })
   }
   return out

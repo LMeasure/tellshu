@@ -260,3 +260,32 @@ M4 ── 2.4（书籍用例增量接入）                依赖检索 API 决�
 - smoke 期间顺带发现 8787 端口有残留旧实例（已杀重启）；PG 当时未启动，`/api/health` 报 `database:error`（诚实降级，AI 链路不碰 PG，未受影响）。
 
 smoke 不改任何代码；结论：**M2 全链路真实环境可用**，「真实 LLM 联调 smoke」从遗留项移除。遗留仅剩 M3 词库打通（含词形还原需求）。
+
+---
+
+## 8. M3 交付记录（2026-10-20）
+
+**改了什么**
+
+*词形还原（新能力，smoke 证实的缺口）*
+- `src/domain/dict/lemma.ts`（新）：规则词形还原——单词级候选生成（`-ies→-y` / `-es` / `-s` / `-ing`（含双写辅音还原与 +e）/ `-ed`（同）/ `-er` `-est` `-ly`），短语按空格切词逐词还原重组（功能词不还原、组合上限 8）。诚实边界写在文件头：规则近似非完整 NLP，查不到就未命中，绝不编造
+
+*词库命中（本地优先，零后端）*
+- `src/domain/studyNote/vocabDict.ts`（新）：`resolveVocabDict`——词两侧标点清洗 → lemma 候选依次查本地 `dictEntries`（精确索引 `word_lower`）→ 命中返回全部同词形词条 + `matched_form` + `dict_key`；全部落空返回 null。`pickEntryByPos`：同词形多词条按 pos 择优（精确 > 包含 > 第一条，不编造）
+- `src/domain/transcript/types.ts`：`StudyNoteVocabulary` 增 `dict_key?: string`（命中 = 词条 key；未命中 undefined）。既有记录无此字段天然兼容，Dexie v9 表结构不动
+- `src/domain/studyNote/generate.ts`：生成链路末尾接 `resolveVocabularyDictHits`（串行查库记 `dict_key`），回匹与契约校验顺序不变
+
+*UI（StudyNotePanel 词汇卡重写）*
+- 命中词库：异步 `getDictEntry(dict_key)` 展示**权威**音标/释义/例句，LLM gloss 降级为「AI 语境补充」小字并列；徽标「词库」
+- 未命中：AI gloss + 徽标「AI 生成」（与权威源视觉区分）
+- 公共：点词跳转字幕段（有 `segment_start` 时）+ 「入生词本」按钮（复用 `learning.addToVocab`：权威词形/释义/音标优先，回落 LLM 产物；幂等 + SRS 排程 + sync 入队；「已在生词本」状态按**命中词形**检查——修复了 looking/look 词形不一致导致刷新丢状态的边界）
+- `src/domain/learning.ts`：导出 `makeWordId`（供 UI 侧幂等检查，口径一致）
+
+*顺手修复（导入链阻断性缺陷）*
+- `src/data/dictClient.ts`：`import.meta.env.VITE_API_BASE_URL` 无可选链，tsx 单测环境 TypeError（同类问题 asrClient / llmClient 早已修过，dictClient 漏网）；改为 `import.meta.env?.VITE_API_BASE_URL ?? '/api'`，与两客户端口径一致
+
+**验证了什么**：`scripts/test_study_note_dict.ts`（新，41 断言）全过——lemma 候选族（含 running→run 双写、carries→carry、短语还原与组合上限）、精确/还原/未命中/标点清洗、批量命中与未命中原样保留、pos 择优与回退、`generateAndSaveStudyNote` 集成（SSE 打桩 + 预置词库 → `dict_key` 落库且回匹仍生效）、入生词本（权威词形、幂等、SRS、`isInVocab` 词形口径）。前端四件套全绿（tsc 0 错 / `npm test` **17 套** / build PWA v1.3.0 / check_pwa 10 项）。
+
+**没什么没做**：① lemma 是规则近似，不规则动词/不规则复数（如 `went→go`、`children→child`）不在候选规则内，未命中分支如实兜底；② 同词形多词条 UI 暂只展示 pos 择优后的一条（`entries` 全量已返回，多义项展开未做）；③ 词库命中展示的音标来源是扫描库（仅英音，美音未收录时如实显示单音标）。
+
+**需要你决策什么**：无。M3 按拆解规格完成；M4（书籍用例 HNSW 检索）依赖检索 API 暴露决策，仍后置。
