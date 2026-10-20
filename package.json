@@ -21,7 +21,8 @@
     "test:bilingual": "tsx scripts/test_bilingual.ts",
     "test:reader-v2": "tsx scripts/test_reader_v2.ts",
     "test:word-detail": "tsx scripts/test_word_detail.ts",
-    "check:book-ui": "tsx scripts/check_book_search_ui.ts"
+    "check:book-ui": "tsx scripts/check_book_search_ui.ts",
+    "check:book-browser": "node scripts/check_book_search_browser.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.0",
