@@ -9,7 +9,7 @@ import { ErrorState } from '@/components/ui/error-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getStudyNoteByTranscriptId } from '@/domain/transcript/store'
 import { generateAndSaveStudyNote } from '@/domain/studyNote/generate'
-import { getDictEntry } from '@/domain/dict'
+import { resolveVocabDictEntriesByKey } from '@/domain/studyNote/vocabDict'
 import { addToVocab, isInVocab, makeWordId } from '@/domain/learning'
 import type { StudyNoteRecord } from '@/domain/transcript/types'
 import type { StudyNoteVocabulary } from '@/domain/transcript/types'
@@ -273,6 +273,12 @@ export function StudyNotePanel({
  * 词汇卡（M3）：dict_key 命中 → 词库权威释义/音标/例句 + AI gloss 降级为
  * 语境补充；未命中 → AI gloss + 「AI 生成」徽标。公共能力：点词跳转
  * 字幕段（有 segment_start 时）、入生词本（复用 learning 链路，幂等）。
+ *
+ * 多义项展开（M3 遗留回填）：落库契约只存首条 dict_key（不变），展示层
+ * 用 resolveVocabDictEntriesByKey 按该词形补查全部词条——LLM pos 精确
+ * 匹配的排最前，其余不同 pos 依次并列展示；同 key 去重。词条缺失
+ * （dict_key 被后续 sync 变更/删除）时退出加载明示缺失，保留 AI gloss，
+ * 绝不用 AI 内容冒充词典释义、也绝不永久骨架屏。
  */
 function VocabCard({
   item,
@@ -281,7 +287,7 @@ function VocabCard({
   item: StudyNoteVocabulary
   onSeek: (seconds: number) => void
 }) {
-  const [entry, setEntry] = useState<DictEntry | null>(null)
+  const [entries, setEntries] = useState<DictEntry[] | null>(null)
   const [added, setAdded] = useState(false)
   const [error, setError] = useState('')
 
@@ -289,19 +295,19 @@ function VocabCard({
 
   useEffect(() => {
     let cancelled = false
-    setEntry(null)
+    setEntries(null)
     setAdded(false)
     setError('')
     // 先取词条再按「命中词形」检查生词本——写入用的是 entry.word，
     // 检查也必须用它，否则词形不一致时（looking vs look）刷新后状态会丢
     const load = async (): Promise<void> => {
-      const found =
+      const rows =
         item.dict_key !== undefined
-          ? ((await getDictEntry(item.dict_key).catch(() => null)) ?? null)
-          : null
+          ? await resolveVocabDictEntriesByKey(item.dict_key, item.pos).catch(() => [] as DictEntry[])
+          : []
       if (cancelled) return
-      setEntry(found)
-      const checkWord = found?.word ?? item.word
+      setEntries(rows)
+      const checkWord = rows[0]?.word ?? item.word
       const v = await isInVocab(makeWordId({ word: checkWord })).catch(() => false)
       if (!cancelled) setAdded(v)
     }
@@ -309,12 +315,13 @@ function VocabCard({
     return () => {
       cancelled = true
     }
-  }, [item.dict_key, item.word])
+  }, [item.dict_key, item.word, item.pos])
 
   async function add(): Promise<void> {
     setError('')
     try {
       // 权威优先：命中词库用词条原形/释义/音标；未命中回落 LLM 产物
+      const entry = entries?.[0]
       await addToVocab({
         word: entry?.word ?? item.word,
         pos: entry?.pos ?? item.pos,
@@ -327,7 +334,8 @@ function VocabCard({
     }
   }
 
-  const example = entry?.examples[0]
+  // 三态：entries=null 加载中；[]词库缺失（诚实降级）；非空命中展开
+  const missing = fromDict && entries !== null && entries.length === 0
 
   return (
     <li className="rounded-lg border border-border/60 p-2.5">
@@ -349,8 +357,8 @@ function VocabCard({
           </button>
         )}
         {item.pos !== '' && <span className="text-xs text-muted-foreground">{item.pos}</span>}
-        <Badge className={fromDict ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent'}>
-          {fromDict ? '词库' : 'AI 生成'}
+        <Badge className={fromDict && !missing ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent'}>
+          {fromDict && !missing ? '词库' : 'AI 生成'}
         </Badge>
         <div className="ml-auto">
           {added ? (
@@ -370,28 +378,42 @@ function VocabCard({
       </div>
 
       <div className="mt-1.5 space-y-1 text-sm leading-relaxed">
-        {fromDict ? (
-          entry === null ? (
-            <Skeleton className="h-4 w-2/3" />
-          ) : (
-            <>
-              <p>
-                {entry.phonetic !== null && (
-                  <span className="mr-2 font-mono text-xs text-muted-foreground">/{entry.phonetic}/</span>
-                )}
-                {entry.definition_zh}
-              </p>
-              {example !== undefined && (
-                <p className="text-xs text-muted-foreground">
-                  {example.en}
-                  {example.zh !== null && ` —— ${example.zh}`}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">AI 语境补充：{item.gloss}</p>
-            </>
-          )
-        ) : (
+        {!fromDict ? (
           <p>{item.gloss}</p>
+        ) : entries === null ? (
+          <Skeleton className="h-4 w-2/3" />
+        ) : entries.length === 0 ? (
+          <>
+            <p className="text-xs text-muted-foreground">
+              本地词库查不到该词条（词典同步后可能已变更），以下为 AI 释义：
+            </p>
+            <p>{item.gloss}</p>
+          </>
+        ) : (
+          <>
+            {entries.map((entry, index) => (
+              <div key={entry.key} className={index > 0 ? 'border-t border-border/40 pt-1.5' : ''}>
+                <div className="flex flex-wrap items-baseline gap-1.5">
+                  {entry.pos !== '' && (
+                    <span className="text-xs font-medium text-primary">{entry.pos}</span>
+                  )}
+                  {entry.phonetic !== null && entry.phonetic !== '' && (
+                    <span className="font-mono text-xs text-muted-foreground">/{entry.phonetic}/</span>
+                  )}
+                </div>
+                <p>
+                  {entry.definition_zh !== '' ? entry.definition_zh : entry.definition_en}
+                </p>
+                {entry.examples[0] !== undefined && (
+                  <p className="text-xs text-muted-foreground">
+                    {entry.examples[0].en}
+                    {entry.examples[0].zh !== null && ` —— ${entry.examples[0].zh}`}
+                  </p>
+                )}
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground">AI 语境补充：{item.gloss}</p>
+          </>
         )}
         {item.context !== undefined && (
           <p className="text-xs text-muted-foreground">字幕语境：{item.context}</p>
