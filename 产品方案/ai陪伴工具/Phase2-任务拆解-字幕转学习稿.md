@@ -250,3 +250,13 @@ M4 ── 2.4（书籍用例增量接入）                依赖检索 API 决�
 **没什么没做**：① 真实 LLM 联调 smoke（需 AI 端点三值进 `server/.env` 后由你触发）；② M3 词库打通（词汇命中本地 dictEntries / 未命中标「AI 生成」）；③ 历史字幕列表 UI；④ SSE 心跳未加（本地联调场景，前置代理若闲断流再议）。
 
 **需要你决策什么**：AI 端点三值（base_url / model / key）——`.env.example` 已有模板，真值按纪律只写 `server/.env`，值给我即可（或你自己填），随后跑一次真实生成 smoke。
+
+### 7.1 真实 LLM 联调 smoke（2026-10-20，已补跑）
+
+启动 `server`（真实 `.env`，AI 三值在位）后实测：
+- **主路径**：POST /api/ai/study-notes（3 段英文对白）→ HTTP 200，总耗时 8.95s，618 个 delta + 0 error + 1 done；done.note 经**前端同款契约校验通过**（summary / bilingual_notes 3 条 / key_points 6 条 / vocabulary 6 条）。
+- **回匹实况**：6 个词 5 个命中字幕段；`look forward to meeting` 未命中——LLM 给 lemma 形而字幕原文是 `looking forward to meeting`（字面子串匹配不到），**未硬造，如实留空**。这证实了回匹「查无此据就留空」的口径，也提示 M3 词库打通时词形还原（looking→look）是真实需求点。
+- **错误路径**：空 body / segments 为空 → 400 + 统一 JSON 错误体（与前端 asrClient 解析口径一致）。
+- smoke 期间顺带发现 8787 端口有残留旧实例（已杀重启）；PG 当时未启动，`/api/health` 报 `database:error`（诚实降级，AI 链路不碰 PG，未受影响）。
+
+smoke 不改任何代码；结论：**M2 全链路真实环境可用**，「真实 LLM 联调 smoke」从遗留项移除。遗留仅剩 M3 词库打通（含词形还原需求）。
