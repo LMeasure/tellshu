@@ -67,6 +67,13 @@
     @apply bg-muted text-foreground antialiased;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
+
+  /* 键盘焦点环（全局，2026-10-21 全局搜索改版补齐）：原来全局缺失，
+     只用 :focus 会点在鼠标上也出环，:focus-visible 只在键盘导航时出。
+     颜色走 ring 令牌（= primary，UI 组件对比度阈值 3:1，实测 3.34:1）。 */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
 }
 
 @layer components {
@@ -124,18 +131,27 @@
     background: transparent;
   }
 
-  /* 阅读器 / 记忆面板独立滚动条 */
+  /* 阅读器 / 记忆面板独立滚动条：一律隐藏（用户 2026-10-21 定稿，
+     含上下滚动模式；此前仅非滚动模式隐藏）。保留滚动能力本身。 */
   .reader-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--primary)) transparent;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
   .reader-scroll::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 0;
+    height: 0;
+    display: none;
   }
-  .reader-scroll::-webkit-scrollbar-thumb {
-    background: hsl(var(--primary) / 0.5);
-    border-radius: 9999px;
+
+  /* 通用「隐藏滚动条但保留滚动」工具类（全局搜索列表 / 最近搜索等复用） */
+  .scrollbar-hidden {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
 
   /* 记忆模式：隐藏底本里的单词（灰色填空线） */

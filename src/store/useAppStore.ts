@@ -136,10 +136,56 @@ export const DEFAULT_WORD_DETAIL_UI: WordDetailUi = {
 /** 评分记录上限，防止长期累积无界增长 */
 const MAX_SCORE_ENTRIES = 200
 
+/**
+ * 搜索历史上限（2026-10-21 全局搜索全屏化）：只留最近这么多条**访问记录**，
+ * 新→旧存（index 0 = 最近点击）。
+ */
+export const MAX_SEARCH_HISTORY = 10
+
+/**
+ * 一条搜索历史 = 一次「点击搜索结果并跳转详情页」的访问（2026-10-21 用户定稿）：
+ *  - 只在用户真正点结果跳详情时写入；单纯打字 / 按回车不留痕；
+ *  - 重复点击同一词：count + 1、lastAt 刷新、置顶，不堆两条一样的记录；
+ *  - count > 1 时 UI 才显示「×N」角标（代表查询次数）。
+ */
+export interface SearchHistoryItem {
+  /** 查询词（点击结果时的词形，原样保存） */
+  query: string
+  /** 点击次数 */
+  count: number
+  /** 最近一次点击的时间戳（ms） */
+  lastAt: number
+}
+
+/** 旧存档迁移：persist 里可能是 string[]（2026-10-21 之前的「查询词」模型） */
+function normalizeSearchHistory(raw: unknown): SearchHistoryItem[] {
+  if (!Array.isArray(raw)) return []
+  const out: SearchHistoryItem[] = []
+  for (const it of raw) {
+    if (typeof it === 'string') {
+      const t = it.trim()
+      if (t) out.push({ query: t, count: 1, lastAt: 0 })
+    } else if (it && typeof it === 'object') {
+      const o = it as Partial<SearchHistoryItem>
+      const t = typeof o.query === 'string' ? o.query.trim() : ''
+      if (t) {
+        out.push({
+          query: t,
+          count: typeof o.count === 'number' && o.count > 0 ? Math.floor(o.count) : 1,
+          lastAt: typeof o.lastAt === 'number' ? o.lastAt : 0,
+        })
+      }
+    }
+  }
+  return out.slice(0, MAX_SEARCH_HISTORY)
+}
+
 interface AppState {
   settings: SettingsState
   isGuest: boolean
   wordDetail: WordDetailUi
+  /** 全局搜索历史（访问记录，新→旧）；persist 跨会话 */
+  searchHistory: SearchHistoryItem[]
   toggleDarkMode: () => void
   setSetting: <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => void
   setGuest: (v: boolean) => void
@@ -148,6 +194,10 @@ interface AppState {
   setWordDetailPos: (index: number) => void
   setWordDetailQuery: (q: string) => void
   setExampleScore: (key: string, score: number, real: boolean) => void
+  /** 记一次搜索访问（点结果跳详情才调）：小写去重、count+1、刷新时间、置顶；空串忽略 */
+  recordSearchVisit: (q: string) => void
+  /** 清空搜索历史 */
+  clearSearchHistory: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -167,6 +217,7 @@ export const useAppStore = create<AppState>()(
       },
       isGuest: false,
       wordDetail: { ...DEFAULT_WORD_DETAIL_UI },
+      searchHistory: [],
       toggleDarkMode: () =>
         set((s) => ({ settings: { ...s.settings, darkMode: !s.settings.darkMode } })),
       setSetting: (key, value) =>
@@ -204,6 +255,23 @@ export const useAppStore = create<AppState>()(
           }
           return { wordDetail: { ...s.wordDetail, scores: next, scoreReal: nextReal } }
         }),
+      recordSearchVisit: (q) =>
+        set((s) => {
+          const t = q.trim()
+          if (!t) return s
+          const now = Date.now()
+          const key = t.toLowerCase()
+          // 小写去重：同一个词再点只 count+1 + 时间刷新 + 置顶，不堆重复条目
+          const prev = s.searchHistory.find((h) => h.query.toLowerCase() === key)
+          const rest = s.searchHistory.filter((h) => h.query.toLowerCase() !== key)
+          const next: SearchHistoryItem = {
+            query: t,
+            count: (prev?.count ?? 0) + 1,
+            lastAt: now,
+          }
+          return { searchHistory: [next, ...rest].slice(0, MAX_SEARCH_HISTORY) }
+        }),
+      clearSearchHistory: () => set({ searchHistory: [] }),
     }),
     {
       name: 'shushu-settings',
@@ -211,6 +279,7 @@ export const useAppStore = create<AppState>()(
         settings: s.settings,
         isGuest: s.isGuest,
         wordDetail: s.wordDetail,
+        searchHistory: s.searchHistory,
       }),
       // 深合并 settings：老存档缺新字段（如 studyBatchSize）时自动补默认值，
       // 否则升级用户会读到 undefined。
@@ -229,6 +298,8 @@ export const useAppStore = create<AppState>()(
             },
           },
           wordDetail: { ...current.wordDetail, ...(p.wordDetail ?? {}) },
+          // 搜索历史：旧存档是 string[]（查询词模型），统一迁移成访问记录
+          searchHistory: normalizeSearchHistory(p.searchHistory),
         }
       },
     },

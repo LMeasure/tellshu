@@ -1145,7 +1145,7 @@ export function Reader() {
     const all = annotations ?? []
     return (
       <article
-        className={cn('reader-scroll space-y-4 pb-8 pt-4', MARGIN_CLASS[prefs.margin])}
+        className={cn('reader-scroll space-y-4 pb-14 pt-4', MARGIN_CLASS[prefs.margin])}
         style={{
           fontSize: prefs.fontSize,
           lineHeight: prefs.lineHeight,
@@ -1251,7 +1251,7 @@ export function Reader() {
           />
         ) : (
           <div
-            className="reader-nobar min-h-0 flex-1 overflow-y-auto px-4 py-4"
+            className="reader-nobar min-h-0 flex-1 overflow-y-auto px-4 pb-14 pt-4"
             onClick={(e) => {
               const t = e.target as HTMLElement
               if (t.closest('input,textarea,button,select,a,label,[data-no-chrome]')) return

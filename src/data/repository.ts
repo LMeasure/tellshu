@@ -20,6 +20,7 @@
 import { fetchData } from './dataClient'
 import { buildDiagnostics } from '../lib/diagnostic'
 import { mergeSearchHits, rankSearchMatches } from '../lib/search'
+import { rankByScore } from '../lib/searchRank'
 import type { SearchHit, SearchIndexWord } from '../lib/search'
 import type {
   BookMeta,
@@ -62,6 +63,8 @@ export interface ContentRepository {
   getAttribution(): Promise<SourceAttribution | null>
   /** 全词库搜索（跨全部词本，不需要用户选词本） */
   searchAllWords(query: string, limit?: number): Promise<SearchHit[]>
+  /** 相似度排序版全词库搜索（全局搜索浮层用，打分规则见 lib/searchRank.ts） */
+  searchRanked(query: string, limit?: number): Promise<SearchHit[]>
   /** 学习路径目录（词本 × 难度档统计，几 KB 预计算产物） */
   getCatalog(): Promise<CatalogBook[]>
   /* ---- 全量词库层（Linguabase 百万级，主题 + 难度双层） ---- */
@@ -202,6 +205,22 @@ export const repository: ContentRepository = {
     const nameOf = new Map<string, string>(idx.books.map((b) => [b.id, b.name]))
     // 每档多取一些留出归并余量（同一单词可能被多本收录）
     const candidates = rankSearchMatches(words, q, limit * 3)
+    return mergeSearchHits(candidates, nameOf, limit)
+  },
+  /**
+   * 相似度排序版搜索（全局搜索浮层用，2026-10-21）：打分规则见 lib/searchRank.ts
+   * （精确 > 前缀 > 包含 > 拼写容错 > 词形还原 > 中文释义），归并逻辑与
+   * searchAllWords 完全一致，只是候选取自打分排序而非三档截取。
+   */
+  async searchRanked(query: string, limit = 30) {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const idx = await loadIndex()
+    if (!idx) return []
+    const words = await loadSearchIndex()
+    const nameOf = new Map<string, string>(idx.books.map((b) => [b.id, b.name]))
+    // 多取一倍留归并余量（同一单词被多本收录时只展示一条）
+    const candidates = rankByScore(words, q, limit * 2)
     return mergeSearchHits(candidates, nameOf, limit)
   },
   async getCatalog() {

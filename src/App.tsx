@@ -49,7 +49,8 @@ export default function App() {
       <Route
         path="/search"
         element={
-          <AppShell>
+          /* /search 自身就是搜索页：不挂全局搜索停靠，避免同功能重复 */
+          <AppShell showGlobalSearch={false}>
             <Search />
           </AppShell>
         }
@@ -65,7 +66,7 @@ export default function App() {
       <Route
         path="/learn"
         element={
-          <AppShell showTopSearch={false}>
+          <AppShell>
             <LearningFlow />
           </AppShell>
         }
@@ -73,7 +74,7 @@ export default function App() {
       <Route
         path="/challenge"
         element={
-          <AppShell showTopSearch={false}>
+          <AppShell>
             <ChallengeScreen />
           </AppShell>
         }
@@ -81,7 +82,7 @@ export default function App() {
       <Route
         path="/result"
         element={
-          <AppShell showTopSearch={false}>
+          <AppShell>
             <PracticeResult />
           </AppShell>
         }
@@ -155,7 +156,7 @@ export default function App() {
       <Route
         path="/recitations"
         element={
-          <AppShell showTopSearch={false}>
+          <AppShell>
             <Recitations />
           </AppShell>
         }
@@ -178,7 +179,7 @@ export default function App() {
       <Route
         path="/dict-ingest"
         element={
-          <AppShell showTopSearch={false}>
+          <AppShell>
             <DictIngest />
           </AppShell>
         }

@@ -11,6 +11,10 @@ import { cn } from '@/lib/utils'
  * 底部 Tab：首页 / 发现 / 复习 / 我的（见 02-IA §1，04/05 全局常驻）。
  * 图标按需求换为述树自绘：首页=3号实心房、发现=1号网络节点、
  * 复习=2号翻卡叠、我的=4号实心人（见 components/icons/shushu.tsx 的用途登记）。
+ *
+ * 定位（2026-10-21）：sticky/z-index 上交给 AppShell 的底部停靠组统一管理
+ * （Tab 栏 + 全局搜索框同组，键盘弹起时一起按 --kb-inset 上移）；
+ * 本组件只负责 Tab 行自身，保持纯展示。
  */
 const TABS = [
   { to: '/', label: '首页', icon: IconHomeSolid, end: true },
@@ -21,7 +25,7 @@ const TABS = [
 
 export function BottomTabBar() {
   return (
-    <nav className="safe-bottom sticky bottom-0 z-20 flex items-stretch border-t border-border bg-card/95 backdrop-blur">
+    <nav className="flex items-stretch border-t border-border bg-card/95 backdrop-blur">
       {TABS.map((t) => (
         <NavLink
           key={t.to}

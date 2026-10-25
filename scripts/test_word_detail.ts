@@ -22,7 +22,7 @@
  * 最后有**反向测试**：构造错误实现，确认断言真的会红。
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 
 import {
   bindExamples,
@@ -41,6 +41,13 @@ import {
   mockFollowScore,
   scoreRemark,
 } from '../src/lib/followScore'
+import {
+  buildQueryContext,
+  levenshtein,
+  rankByScore,
+  scoreMatch,
+} from '../src/lib/searchRank'
+import type { SearchIndexWord } from '../src/lib/search'
 
 let failed = 0
 function assert(cond: boolean, msg: string) {
@@ -405,6 +412,168 @@ function main() {
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.fw-stage\s*{\s*display: none/.test(css),
     '系统减少动效时烟花整体隐藏',
   )
+
+  // ── 全局搜索浮层（2026-10-21：底部停靠 + 相似度排序 + 防抖/键盘）──
+  console.log('[全局搜索] 相似度打分 / 防抖 / 键盘跟随 / 停靠层级')
+  const idxWord = (word: string, zh: string | null = null): SearchIndexWord =>
+    ({ id: word, word, ipa: null, pos: null, zh, book: 'CET4', dl: 1, tid: 't' }) as SearchIndexWord
+
+  // 档位关系：精确 > 前缀（长度比起效）> 包含 > 模糊 > 词形还原 > 中文释义
+  const inCtx = buildQueryContext('in')
+  const sExact = scoreMatch(inCtx, idxWord('in'))
+  const sInto = scoreMatch(inCtx, idxWord('into'))
+  const sIndoor = scoreMatch(inCtx, idxWord('indoor'))
+  const sPrint = scoreMatch(inCtx, idxWord('print'))
+  assert(sExact === 1000, '精确相等 1000 分置顶')
+  assert(sInto > sIndoor && sInto > 900 && sIndoor > 900, '前缀档内按查询占比排（into > indoor）')
+  assert(sPrint >= 700 && sPrint < 900, '词内包含落包含档（700+）')
+  assert(
+    scoreMatch(buildQueryContext('helo'), idxWord('hello')) === 452 &&
+      scoreMatch(buildQueryContext('helo'), idxWord('help')) === 460,
+    '拼写容错：helo→hello(距离1)=452、helo→help(距离1)=460',
+  )
+  assert(
+    scoreMatch(buildQueryContext('helo'), idxWord('helicopter')) === 0,
+    '容错边界：编辑距离 >2 不匹配',
+  )
+  assert(
+    scoreMatch(buildQueryContext('running'), idxWord('run')) === 450,
+    '词形还原：running → run 命中还原档',
+  )
+  assert(
+    scoreMatch(buildQueryContext('a'), idxWord('pink', 'n. 粉色；adv. 粉红色地')) === 0,
+    '单字母查询不走中文释义档（避开 adv. 缩写噪音）',
+  )
+  assert(
+    scoreMatch(buildQueryContext('adv'), idxWord('fast', 'adv. 快地；adj. 快的')) === 0,
+    '纯 ASCII 查询不走中文释义档（adv 不命中释义里的 adv.）',
+  )
+  assert(
+    scoreMatch(buildQueryContext('国外'), idxWord('abroad', 'adv. 到国外；在国外')) === 303,
+    '中文查询走释义档（国外 → abroad）',
+  )
+  eq(levenshtein('hello', 'helo', 2), 1, 'levenshtein 基本正确')
+  eq(levenshtein('kitten', 'sitting', 3), 3, 'levenshtein 经典用例')
+
+  const rankWords = [idxWord('into'), idxWord('in'), idxWord('indoor'), idxWord('print'), idxWord('inner'), idxWord('inning')]
+  eq(
+    rankByScore(rankWords, 'in', 10)
+      .map((w) => w.word)
+      .join(','),
+    'in,into,inner,indoor,inning,print',
+    'rankByScore 返回 desc（最匹配在前），UI 层反转为「最匹配在最底」',
+  )
+  eq(rankByScore(rankWords, 'in', 2).length, 2, 'limit 生效')
+  eq(rankByScore(rankWords, '   ', 10).length, 0, '空白查询返回空')
+
+  // 性能：22,791 词（真实词库规模）合成数据全量打分 + 排序
+  const bigWords: SearchIndexWord[] = []
+  for (let i = 0; i < 22791; i++) {
+    bigWords.push(idxWord('word' + i.toString(36) + (i % 7 === 0 ? 'ing' : ''), i % 5 === 0 ? `n. 释义${i}` : null))
+  }
+  const tRank0 = performance.now()
+  rankByScore(bigWords, 'word1', 30)
+  const rankMs = performance.now() - tRank0
+  assert(rankMs < 150, `22,791 词全量打分排序 <150ms（实测 ${rankMs.toFixed(1)}ms，防抖 300ms 有余量）`)
+
+  const dock = src('components/layout/SearchDock.tsx')
+  assert(dock.includes('DEBOUNCE_MS = 300') && dock.includes('useDebouncedValue'), '防抖 300ms 走 useDebouncedValue 尾延迟')
+  assert(dock.includes('reqRef') && dock.includes('seq !== reqRef.current'), '竞态防护：旧查询响应直接丢弃')
+  assert(dock.includes('lastQueryRef') && dock.includes('if (query === lastQueryRef.current) return'), '点历史后防抖再来不重复搜')
+  // 2026-10-21 全屏 overlay 版（推翻 v2 底部停靠面板）
+  assert(
+    dock.includes('createPortal') &&
+      dock.includes('fixed inset-x-0 top-0 z-50') &&
+      dock.includes("bottom: 'var(--kb-inset, 0px)'"),
+    '全屏搜索层：Portal 到 body + fixed 全屏 + 层底跟随键盘高度',
+  )
+  assert(dock.includes('isComposing') && dock.includes('keyCode === 229'), 'IME 组词期间回车不误触（isComposing + 229 兜底）')
+  assert(dock.includes('该词暂未收录') && !dock.includes('暂无搜索结果'), '空态文案统一「该词暂未收录」')
+  assert(dock.includes('[...hits].reverse()') && dock.includes('el.scrollTop = el.scrollHeight'), '结果反序渲染 + 自动滚底（最匹配紧贴输入框）')
+  assert(dock.includes('justify-end') && dock.includes('min-h-full'), '列表贴底：结果少时整体靠下、多余空间留在上方')
+  assert(!dock.includes('查看全部结果'), '无「查看全部结果」入口（用户 2026-10-21 确认去掉，全页结果走回车）')
+  assert(dock.includes('aria-label="全局搜索"') && dock.includes('aria-label="清空搜索"'), '输入框与清空按钮有 aria-label')
+  assert(dock.includes('text-base outline-none') && dock.includes('ring-0'), '输入框 16px 字号 + 聚焦无环只留光标（全局焦点环显式豁免）')
+  assert(dock.includes('searchRanked'), '搜索区走 repository.searchRanked（相似度排序版）')
+  // 原 TopSearchBar 能力迁移（语音 / 扫描）
+  assert(
+    dock.includes('speechService') && dock.includes("lang: 'zh-CN'") && dock.includes('onPartial'),
+    '语音输入从 TopSearchBar 迁入（zh-CN 识别，partial 实时回填）',
+  )
+  assert(dock.includes('/import?tab=scan'), '扫描识别入口保留（跳 /import?tab=scan）')
+  assert(dock.includes('aria-label={listening ? \'正在听…\' : \'语音输入\'}') && dock.includes('aria-label="扫描识别"'), '语音/扫描按钮有 aria-label（语音按识别态切换文案）')
+  // 历史 = 访问记录（用户 2026-10-21 定稿，核心规则）
+  assert(
+    dock.includes('recordSearchVisit(h.word)') && !dock.includes('addSearchQuery'),
+    '历史唯一写入点：点击结果跳详情才记；打字/回车不留痕',
+  )
+  assert(
+    !dock.includes('[...history].reverse()') && dock.includes('history.map'),
+    '历史按时间倒序直接渲染（最近点击在最上面，不反序）',
+  )
+  assert(dock.includes('item.count > 1') && dock.includes('×{item.count}'), '重复访问标 ×N 角标（>1 才显示）')
+  assert(dock.includes('clearSearchHistory') && dock.includes('aria-label="清空历史记录"'), '历史可一键清空')
+  assert(dock.includes('最近搜索') && dock.includes('Clock'), '无输入时显示历史访问记录（时钟图标 + 标题行）')
+  assert(dock.includes('MAX_SEARCH_HISTORY'), '历史上限常量在组件内引用（与 store 同源）')
+
+  assert(
+    store.includes('export interface SearchHistoryItem') &&
+      store.includes('searchHistory: SearchHistoryItem[]') &&
+      store.includes('recordSearchVisit'),
+    'store：历史改为访问记录模型 {query,count,lastAt}',
+  )
+  assert(
+    store.includes('count: (prev?.count ?? 0) + 1') &&
+      store.includes('lastAt: now') &&
+      store.includes('[next, ...rest].slice(0, MAX_SEARCH_HISTORY)'),
+    '访问记录：小写去重、count+1、刷新时间、置顶、超上限丢最旧',
+  )
+  assert(
+    store.includes('normalizeSearchHistory(p.searchHistory)') &&
+      store.includes("typeof it === 'string'"),
+    'persist merge 迁移旧 string[] 存档为访问记录（升级用户不丢）',
+  )
+  assert(store.includes('searchHistory: []') && store.includes('MAX_SEARCH_HISTORY = 10'), 'store：searchHistory 默认空 + 上限 10')
+  assert(store.includes('searchHistory: s.searchHistory') && store.includes('partialize'), 'searchHistory 进 persist 白名单（跨会话保留）')
+
+  const kbHook = src('hooks/useKeyboardInset.ts')
+  assert(kbHook.includes('visualViewport') && kbHook.includes('--kb-inset'), '键盘高度经 visualViewport 写 --kb-inset（iOS 唯一可靠来源）')
+  assert(kbHook.includes('KEYBOARD_MIN_PX') && kbHook.includes('KEYBOARD_MIN_PX ? h : 0') && kbHook.includes('removeProperty'), '主路径也有 120px 噪音阈值 + 卸载清理变量')
+  const debounceHook = src('hooks/useDebouncedValue.ts')
+  assert(debounceHook.includes("value === ''") && debounceHook.includes('clearTimeout'), '防抖 hook：空值立即生效 + 定时器随 value 变化/卸载取消')
+
+  // 2026-10-21 收尾：滚动条一律隐藏 + 阅读器底部留白补足导航栏高度
+  assert(css.includes('.scrollbar-hidden'), '通用隐藏滚动条工具类落地（搜索列表复用）')
+  assert(/\.reader-scroll\s*\{[^}]*scrollbar-width: none/.test(css), '阅读器滚动条一律隐藏（含上下滚动模式，保留滚动能力）')
+  const readerSrc = src('pages/Reader.tsx')
+  assert(readerSrc.includes('pb-14 pt-4'), 'scroll/记忆模式底部留白补足到导航栏高度（56px，防末行被导航栏盖住）')
+
+  const shell = src('components/layout/AppShell.tsx')
+  assert(shell.includes('useKeyboardInset()') && shell.includes('showGlobalSearch'), 'AppShell 启用键盘监听并支持全局搜索开关')
+  assert(
+    shell.includes('sticky bottom-[var(--kb-inset,0px)] z-30') && shell.includes('safe-bottom sticky'),
+    '底部停靠组 sticky + z-30 + 键盘偏移 + 安全区收敛在容器',
+  )
+  assert(
+    shell.indexOf('<SearchDock />') < shell.indexOf('<BottomTabBar />'),
+    '停靠组顺序：搜索框在上、Tab 栏在下（2026-10-21 用户定稿，防回退）',
+  )
+  assert(shell.includes('safe-top flex-1 overflow-y-auto'), '顶栏撤掉后 safe-top 转移到 main（刘海安全区不丢）')
+  assert(!shell.includes("from './TopSearchBar'"), 'AppShell 不再渲染顶部搜索栏')
+  assert(
+    !existsSync(new URL('../src/components/layout/TopSearchBar.tsx', import.meta.url)) &&
+      !existsSync(new URL('../src/components/search/GlobalSearchDock.tsx', import.meta.url)),
+    '旧组件文件已删除（TopSearchBar / GlobalSearchDock，不保留两套）',
+  )
+  const tabBar = src('components/layout/BottomTabBar.tsx')
+  assert(!tabBar.includes('sticky bottom-0'), 'Tab 栏自身不再 sticky（定位交给停靠组，避免两个 sticky 互相重叠）')
+  const appRoutes = src('App.tsx')
+  assert(
+    appRoutes.includes('<AppShell showGlobalSearch={false}>') && !appRoutes.includes('showTopSearch'),
+    '/search 页传 showGlobalSearch={false}；showTopSearch prop 已随顶栏废弃清理',
+  )
+  assert(repo.includes('searchRanked') && repo.includes('rankByScore'), 'repository 暴露 searchRanked 并复用归并逻辑')
+  assert(css.includes('*:focus-visible') && css.includes('ring-ring'), '全局键盘焦点环补齐（原缺失，搜索区键盘导航可见）')
 
   if (failed) {
     console.error(`\n${failed} 项失败`)
