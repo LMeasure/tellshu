@@ -28,6 +28,11 @@
  *   ----- 以下为 v9 新增（Phase 2 M1：ASR 字幕 + 学习稿）-----
  *   transcripts  id, created_at, source
  *   studyNotes   id, transcript_id, status, created_at, updated_at, source
+ *   ----- 以下为 v10 新增（单词默写：单文档会话，队列内嵌）-----
+ *   spellingSessions  id, status, started_at, owner
+ *     ⚠️ queue 是会话文档里的对象数组，IndexedDB 不索引对象数组的内嵌属性，
+ *        所以**不给 position / word_status / word_id 建索引**（建了也不会生效，
+ *        反而误导后来人以为可以按词条查）。按词条查一律读整份会话文档。
  */
 
 import Dexie, { type Table } from 'dexie'
@@ -65,6 +70,8 @@ const INDEXED_FIELDS: Record<TableName, readonly string[]> = {
   sync_meta: ['key'],
   transcripts: ['id', 'created_at', 'source'],
   studyNotes: ['id', 'transcript_id', 'status', 'created_at', 'updated_at', 'source'],
+  // v10：单词默写会话（queue 内嵌，无内嵌字段索引）
+  spellingSessions: ['id', 'status', 'started_at', 'owner'],
 }
 
 const TABLE_NAMES = Object.keys(INDEXED_FIELDS) as TableName[]
@@ -88,6 +95,7 @@ class ShushuDB extends Dexie {
   sync_meta!: Table<StorageSchema['sync_meta'], string>
   transcripts!: Table<StorageSchema['transcripts'], string>
   studyNotes!: Table<StorageSchema['studyNotes'], string>
+  spellingSessions!: Table<StorageSchema['spellingSessions'], string>
 
   constructor() {
     super('shushu-learn')
@@ -168,6 +176,14 @@ class ShushuDB extends Dexie {
     this.version(9).stores({
       transcripts: 'id, created_at, source',
       studyNotes: 'id, transcript_id, status, created_at, updated_at, source',
+    })
+    // v10：单词默写会话（2026-10-21 拍板，方案 V3.2 §5.1）
+    //   · 单文档：queue 内嵌在会话行里 —— TableService 没有事务 API，
+    //     只有一次 put() 换整份文档才能保证「计数 + 状态 + 队列推进」原子
+    //   · 纯新增表，无 upgrade；存量库打开时自动建空表，老数据一行不动
+    //   · 不建 queue 内嵌字段索引（IndexedDB 不支持，建了也不生效）
+    this.version(10).stores({
+      spellingSessions: 'id, status, started_at, owner',
     })
   }
 }

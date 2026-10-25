@@ -1,13 +1,35 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, BookMarked, AlertTriangle, Trophy, Route as RouteIcon } from 'lucide-react'
+import {
+  RefreshCw,
+  BookMarked,
+  AlertTriangle,
+  Trophy,
+  Route as RouteIcon,
+  PenLine,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
-import { getDueReviews, getLayerCounts, nextReviewLabel, type VocabEntry, type LayerCounts } from '@/domain/learning'
+import {
+  getDueReviews,
+  getLayerCounts,
+  nextReviewLabel,
+  type VocabEntry,
+  type LayerCounts,
+} from '@/domain/learning'
+import { DEFAULT_TARGET_CORRECT, type SpellingSelectionMode } from '@/domain/spellingSession'
 import { repository, type CatalogBook } from '@/data/repository'
 import { useAppStore } from '@/store/useAppStore'
+
+/** 单词默写入口的三种选词模式（与领域层 SpellingSelectionMode 一致） */
+const SPELLING_MODES: { key: SpellingSelectionMode; label: string }[] = [
+  { key: 'random', label: '随机' },
+  { key: 'recent', label: '最近新增' },
+  { key: 'wrong', label: '易错词' },
+]
 
 /**
  * 复习 Tab（见 02-IA §1、04 §2.6、09 Phase 1）：
@@ -20,6 +42,7 @@ export function Review() {
   const [due, setDue] = useState<VocabEntry[] | null>(null)
   const [counts, setCounts] = useState<LayerCounts | null>(null)
   const [catalog, setCatalog] = useState<CatalogBook[] | null>(null)
+  const [spellingMode, setSpellingMode] = useState<SpellingSelectionMode>('recent')
 
   useEffect(() => {
     getDueReviews()
@@ -87,6 +110,34 @@ export function Review() {
           )}
           <Button className="w-full" disabled={due.length === 0} onClick={() => navigate('/challenge')}>
             开始闯关
+          </Button>
+        </CardBody>
+      </Card>
+
+      {/* 单词默写入口（D4：入口放 /review 页内卡片，不新增底部 Tab） */}
+      <Card>
+        <CardBody>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-semibold">
+              <PenLine className="h-5 w-5 text-primary" /> 单词默写
+            </div>
+            <Badge>连对 {DEFAULT_TARGET_CORRECT} 次</Badge>
+          </div>
+          <p className="mb-3 text-sm text-muted-foreground">
+            看中文释义写英文。本轮 <b className="text-foreground">{batchSize}</b> 个
+            （每轮词数在「设置」里调，学习和闯关共用）；连续拼对 {DEFAULT_TARGET_CORRECT} 次记为掌握，
+            计入生词本复习排程。进度存在本机，中途退出可继续。
+          </p>
+          <div className="mb-3">
+            <Segmented
+              items={SPELLING_MODES.map((m) => ({ key: m.key, label: m.label }))}
+              value={spellingMode}
+              onChange={setSpellingMode}
+              size="sm"
+            />
+          </div>
+          <Button className="w-full" onClick={() => navigate(`/spelling?mode=${spellingMode}`)}>
+            开始默写
           </Button>
         </CardBody>
       </Card>

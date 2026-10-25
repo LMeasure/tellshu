@@ -16,6 +16,7 @@ import type { BookChapter } from '../lib/epub'
 import type { MaskMode, MaskTarget } from '../lib/masking'
 import type { DiagnoseLevel } from '../lib/diagnostic'
 import type { StudyNoteRecord, TranscriptRecord } from './transcript/types'
+import type { SpellingSession } from './spelling'
 
 /** 诊断等级沿用 lib/diagnostic 的定义，避免两处各写一份后漂移 */
 export type { DiagnoseLevel }
@@ -387,6 +388,8 @@ export interface StorageSchema {
   // ↓ v9 新增：ASR 字幕持久化 + AI 学习稿（Phase 2 M1）
   transcripts: TranscriptRecord
   studyNotes: StudyNoteRecord
+  // ↓ v10 新增：单词默写会话（单文档，queue 内嵌；方案 V3.2 §5.1）
+  spellingSessions: SpellingSession
 }
 
 export type TableName = keyof StorageSchema
@@ -411,6 +414,7 @@ export interface PrimaryKeyMap {
   sync_meta: string
   transcripts: string
   studyNotes: string
+  spellingSessions: string
 }
 
 export type PrimaryKey<K extends TableName> = PrimaryKeyMap[K]

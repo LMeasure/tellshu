@@ -36,6 +36,7 @@ const INDEXED_FIELDS: Record<TableName, readonly string[]> = {
   sync_meta: ['key'],
   transcripts: ['id', 'created_at', 'source'],
   studyNotes: ['id', 'transcript_id', 'status', 'created_at', 'updated_at', 'source'],
+  spellingSessions: ['id', 'status', 'started_at', 'owner'],
 }
 
 const AUTO_INCREMENT: Record<TableName, string | null> = {
@@ -57,6 +58,7 @@ const AUTO_INCREMENT: Record<TableName, string | null> = {
   sync_meta: null,
   transcripts: null,
   studyNotes: null,
+  spellingSessions: null,
 }
 
 const PRIMARY_KEY: Record<TableName, string> = {
@@ -78,6 +80,7 @@ const PRIMARY_KEY: Record<TableName, string> = {
   sync_meta: 'key',
   transcripts: 'id',
   studyNotes: 'id',
+  spellingSessions: 'id',
 }
 
 class MemoryTableService<T extends Record<string, unknown>> implements TableService<T> {
