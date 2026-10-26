@@ -13,6 +13,8 @@ import { PracticeResult } from '@/pages/PracticeResult'
 import { Discover } from '@/pages/Discover'
 import { CourseDetail } from '@/pages/CourseDetail'
 import { Review } from '@/pages/Review'
+import { Spelling } from '@/pages/Spelling'
+import { SpellingResult } from '@/pages/SpellingResult'
 import { Profile } from '@/pages/Profile'
 import { Settings } from '@/pages/Settings'
 import { Import } from '@/pages/Import'
@@ -108,6 +110,24 @@ export default function App() {
         element={
           <AppShell>
             <Review />
+          </AppShell>
+        }
+      />
+      {/* 单词默写：练习页与结果页（2026-10-21，方案 V3.2 §7）。
+          结果页是独立路由，不复用占位的 /result */}
+      <Route
+        path="/spelling"
+        element={
+          <AppShell>
+            <Spelling />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/spelling-result"
+        element={
+          <AppShell>
+            <SpellingResult />
           </AppShell>
         }
       />
