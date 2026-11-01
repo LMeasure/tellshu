@@ -35,7 +35,7 @@ const DEBOUNCE_MS = 300
 /** 结果最多展示几条（全页结果区可滚动） */
 const PANEL_LIMIT = 30
 
-export function SearchDock() {
+export function SearchDock({ variant = 'dock' }: { variant?: 'dock' | 'topbar' }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [raw, setRaw] = useState('')
@@ -338,15 +338,16 @@ export function SearchDock() {
           document.body,
         )}
 
-      {/* 入口行（全屏层收起时停靠在 Tab 栏上方） */}
-      <div className="relative border-t border-border bg-card/95 backdrop-blur">
-        <div className="px-3 py-2">
-          <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3">
-            <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+      {/* 入口行：dock = 原底部停靠行（移动端，逐字保留）；topbar = 桌面顶部栏紧凑搜索框。
+          两者仅外观不同，搜索逻辑（overlay / 防抖 / 竞态 / isComposing / 历史 / 语音 / Esc）完全共用。 */}
+      {variant === 'topbar' ? (
+        <div className="relative flex items-center" data-variant="topbar">
+          <div className="flex w-full max-w-md items-center gap-2 rounded-xl bg-muted px-3 py-1.5">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             <button
               type="button"
               onClick={() => openOverlay(false)}
-              className="flex-1 touch-target text-left text-base text-muted-foreground"
+              className="flex-1 touch-target text-left text-sm text-muted-foreground"
               aria-label="打开全局搜索"
               title="搜单词"
             >
@@ -359,13 +360,13 @@ export function SearchDock() {
                 aria-label={listening ? '正在听…' : '语音输入'}
                 title={listening ? '正在听…' : '语音输入'}
                 className={cn(
-                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full touch-target',
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full touch-target',
                   listening
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-secondary',
                 )}
               >
-                <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
+                <Mic className={cn('h-4 w-4', listening && 'animate-pulse')} />
               </button>
             )}
             <button
@@ -373,13 +374,55 @@ export function SearchDock() {
               onClick={() => navigate('/import?tab=scan')}
               aria-label="扫描识别"
               title="扫描识别"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary touch-target"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary touch-target"
             >
-              <Camera className="h-5 w-5" />
+              <Camera className="h-4 w-4" />
             </button>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="relative border-t border-border bg-card/95 backdrop-blur" data-variant="dock">
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3">
+              <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+              <button
+                type="button"
+                onClick={() => openOverlay(false)}
+                className="flex-1 touch-target text-left text-base text-muted-foreground"
+                aria-label="打开全局搜索"
+                title="搜单词"
+              >
+                搜单词…
+              </button>
+              {recognitionOk && (
+                <button
+                  type="button"
+                  onClick={() => openOverlay(true)}
+                  aria-label={listening ? '正在听…' : '语音输入'}
+                  title={listening ? '正在听…' : '语音输入'}
+                  className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-full touch-target',
+                    listening
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-secondary',
+                  )}
+                >
+                  <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate('/import?tab=scan')}
+                aria-label="扫描识别"
+                title="扫描识别"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary touch-target"
+              >
+                <Camera className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
