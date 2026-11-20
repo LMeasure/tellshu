@@ -9,13 +9,15 @@ O-4A 第十轮 · 本地静态验证（不启动 PG、不执行 SQL、不连 R2�
   3. 三道闸门（O4A_AUTHORIZED + 6 个 *_pw）齐全；ON_ERROR_STOP 存在；事务 BEGIN/COMMIT 配对。
   4. 对象创建顺序正确：schema → 表 → FK 目标先行 → 函数 → 触发器 → 授权。
   5. TRG-01 具备 SECURITY DEFINER + search_path 锁定 + OWNER；verifier 无 consumption UPDATE 授权。
-  6. 屏障状态机四状态齐全；notifies(timeout=) 而非 conn.wait()；psycopg3 版本下限声明。
+  6. 屏障状态机四状态齐全；notifies(timeout=, stop_after=) 是方法调用而非对生成器再调用；
+     屏障场景用 ThreadPoolExecutor(max_workers=...) 重叠；无 time.sleep；psycopg3 版本下限声明。
   7. 测试套件角色 DSN 分离（fixture_admin/collector/verifier/monitor/app）。
 
 注意：py_compile 只证明语法，本脚本是结构断言；二者都不是 PG 实测通过。
 """
 from __future__ import annotations
 
+import ast
 import io
 import re
 import sys
@@ -114,6 +116,49 @@ def check_init() -> None:
         ck(st in sql, f"屏障状态枚举 {st} 存在")
 
 
+def _check_suite_calls(py: str) -> None:
+    """用语法树核对调用形态。子串 notifies( / timeout= 挡不住「对生成器再调用」。"""
+    tree = ast.parse(py)
+    notifies_kw: list[set[str]] = []
+    bad_lines: set[int] = set()
+    pool_with_workers = False
+    sleep_calls = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        kw = {k.arg for k in node.keywords if k.arg}
+        is_notifies = isinstance(func, ast.Attribute) and func.attr == "notifies"
+        if is_notifies:
+            notifies_kw.append(kw)
+        # 缺陷形态：gen(timeout=..., stop_after=1)，gen 是名字而不是 .notifies
+        if isinstance(func, ast.Name) and ({"timeout", "stop_after"} & kw):
+            bad_lines.add(node.lineno)
+        if "stop_after" in kw and not is_notifies:
+            bad_lines.add(node.lineno)
+        is_pool = (
+            (isinstance(func, ast.Name) and func.id == "ThreadPoolExecutor")
+            or (isinstance(func, ast.Attribute) and func.attr == "ThreadPoolExecutor")
+        )
+        if is_pool and "max_workers" in kw:
+            pool_with_workers = True
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "sleep"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "time"
+        ):
+            sleep_calls += 1
+    ck(
+        bool(notifies_kw) and all({"timeout", "stop_after"} <= kw for kw in notifies_kw),
+        "每一处 notifies() 都是方法调用且带关键字 timeout 与 stop_after",
+    )
+    ck(not bad_lines, "timeout/stop_after 没有传给生成器或其他非 notifies 调用"
+       + (f"（行 {sorted(bad_lines)}）" if bad_lines else ""))
+    ck(pool_with_workers, "屏障重叠使用 ThreadPoolExecutor(max_workers=...)")
+    ck(sleep_calls == 0, "套件不调用 time.sleep")
+
+
 def check_suite() -> None:
     py = read(SUITE)
     # 语法检查（tokenize 不做执行）
@@ -124,10 +169,9 @@ def check_suite() -> None:
         ck(False, f"测试套件 tokenize 语法失败: {e}")
 
     ck("psycopg" in py, "使用 psycopg（py3）")
-    ck("notifies(" in py, "使用 conn.notifies() 通知接口")
-    ck("timeout=" in py, "notifies 使用 timeout（3.2+ 接口）")
     ck("3.2" in py, "声明 psycopg >= 3.2 版本依据")
     ck(re.search(r"\bconn\.wait\s*\(", py) is None, "不再使用误导性的 conn.wait() 等通知")
+    _check_suite_calls(py)
 
     for role in ("fixture_admin", "collector", "verifier", "monitor", "app"):
         ck(role in py, f"角色 DSN 分离：{role}")
