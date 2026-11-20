@@ -154,6 +154,8 @@ async function main() {
     '成功映射为 BookHit（title）')
   assert(outcome.hits[0].chapterTitle === 'PART I' && outcome.hits[0].chunkIndex === 12,
     'snake_case → camelCase 映射（chapterTitle / chunkIndex）')
+  assert(outcome.hits[0].bookId === '7', "bookId 映射自 book_id（okBody 夹具 book_id:'7'）")
+  assert(outcome.hits[0].chunkId === 101, 'chunkId 映射自 chunk_id')
   assert(outcome.e2eMs === 27.86, 'e2eMs 取自 latency.e2e_ms')
 
   // ---- 6. 域层：契约校验 ----

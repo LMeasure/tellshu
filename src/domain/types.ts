@@ -132,6 +132,19 @@ export interface ReadingDoc {
   pinned_at?: number
   /** 所属书单名列表（多选「加入书单」写入；空/缺省 = 不属于任何书单） */
   booklists?: string[]
+  /**
+   * 发现书来源站点快照。有值即判定为「发现书」（正文待接入，不编造）。
+   * 行内可选，不建索引、不升 Dexie 版本（先例同 chapters / bookmarks / pinned_at）。
+   * 本轮前端固定为 'gutenberg'（/api/discover 不透出 source_site）。
+   */
+  source_site?: string
+  /**
+   * 发现书来源唯一标识快照。当前检索响应只有 book_id，
+   * 因此 source_id = book_id（PG discovered_books.id 的字符串）。
+   */
+  source_id?: string
+  /** 作者（书架卡片展示；导入书无此字段） */
+  author?: string
   /** 书签列表（页级，目录中列出并跳转） */
   bookmarks?: ReadingBookmark[]
   /** 音频文件二进制（type==='audio' 时存在） */

@@ -309,6 +309,11 @@ export async function saveReading(input: {
   last_page?: number
   /** 音视频字幕转写的分段时间戳（type==='transcript' 时携带，供后续音频同步） */
   segments?: TranscriptSegment[]
+  /** 发现书来源快照；覆盖保存时缺省则保留原值 */
+  source_site?: string
+  source_id?: string
+  /** 作者；覆盖保存时缺省则保留原值 */
+  author?: string
 }): Promise<ReadingDoc> {
   const now = Date.now()
   const id = input.id ?? `r_${now}_${Math.random().toString(36).slice(2, 8)}`
@@ -332,6 +337,9 @@ export async function saveReading(input: {
     pinned_at: prev?.pinned_at,
     booklists: prev?.booklists,
     bookmarks: prev?.bookmarks,
+    source_site: input.source_site ?? prev?.source_site,
+    source_id: input.source_id ?? prev?.source_id,
+    author: input.author ?? prev?.author,
   }
   await T.readings.put(doc)
   return doc
@@ -362,6 +370,49 @@ function sortShelf(books: ReadingDoc[]): ReadingDoc[] {
 export async function getShelfBooks(): Promise<ReadingDoc[]> {
   const all = await T.readings.toArray()
   return sortShelf(all.filter((r) => r.type === 'book' && r.on_shelf))
+}
+
+/**
+ * 发现书稳定主键。同一 (source_site, source_id) 永远得到同一个 id。
+ * 例：discovered:gutenberg:7。用主键查询判定是否已入架，不新增索引、不升 Dexie 版本。
+ */
+export function discoveredDocId(source_site: string, source_id: string): string {
+  return `discovered:${source_site}:${source_id}`
+}
+
+/** source_site 有值即发现书（正文待接入）。导入书不写该字段。 */
+export function isDiscoveredBook(
+  doc: Pick<ReadingDoc, 'source_site'> | null | undefined,
+): boolean {
+  return typeof doc?.source_site === 'string' && doc.source_site.trim() !== ''
+}
+
+/**
+ * 把一本发现书入架。只写书架关联，正文恒为空串，不编造书稿。
+ * 重复入架按稳定 id 覆盖，并保留 created_at / pinned_at / booklists / 阅读进度。
+ */
+export async function shelveDiscoveredBook(input: {
+  title: string
+  author?: string
+  source_site: string
+  source_id: string
+}): Promise<ReadingDoc> {
+  return saveReading({
+    id: discoveredDocId(input.source_site, input.source_id),
+    title: input.title,
+    type: 'book',
+    content: '',
+    on_shelf: true,
+    source_site: input.source_site,
+    source_id: input.source_id,
+    author: input.author,
+  })
+}
+
+/** 是否已入架：按稳定主键 getReading，且该行仍在书架上。 */
+export async function isBookShelved(source_site: string, source_id: string): Promise<boolean> {
+  const doc = await getReading(discoveredDocId(source_site, source_id))
+  return !!doc && doc.type === 'book' && doc.on_shelf === true
 }
 
 /** 加入 / 移出书架 */
