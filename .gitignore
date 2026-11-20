@@ -10,10 +10,13 @@ dist-ssr/
 # 词库数据（410MB，不进仓库；由 D:\English\export_full_to_shushu.py 生成后上传对象存储）
 /data/
 
-# 环境变量（含密钥/自定义域名，不提交；.env.example 是模板，要提交）
+# 环境变量（含密钥/自定义域名，不提交）
+# 覆盖 .env、.env.local、.env.development、.env.production、.env.*.local 等。
+# .env.example 与 .env.*.example（如 .env.production.example）是模板，要提交。
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # 日志
 logs/

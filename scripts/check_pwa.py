@@ -18,7 +18,10 @@ ReferenceError，运行时缓存完全失效。
 用法
 ----
   npm run build
-  python scripts/check_pwa.py            # 或：python scripts/check_pwa.py --dist dist
+  python3 scripts/check_pwa.py           # 或：python3 scripts/check_pwa.py --dist dist
+
+只提供 python3、PATH 上没有 python 时，用 python 调用会在脚本启动前退出 127。
+体检项本身不因解释器调用名改变。
 """
 
 from __future__ import annotations

@@ -53,8 +53,10 @@ develop → feature/xxx →（开发+自测）→ PR → develop →（集成验
 npx tsc --noEmit
 npm test
 npm run build
-python scripts/check_pwa.py
+python3 scripts/check_pwa.py
 ```
+
+第四项必须写成 `python3 scripts/check_pwa.py`。只提供 `python3`、PATH 上没有 `python` 时，`python scripts/check_pwa.py` 在脚本启动前就以 127 退出。`scripts/check_pwa.py` 的 shebang 已是 `#!/usr/bin/env python3`，十项体检不因调用名改变。`npm run check:pwa` 仍调用 `python`（`package.json` 本轮不改），合并前以上面这一行为准，不要用它代替。
 
 改动 `server/` 时另在 `server/` 目录跑：
 ```bash
