@@ -390,8 +390,17 @@ export const dexieStorage: StorageService = {
     }
   },
 
+  /**
+   * 一次 rw 事务清空全部表。
+   * 任一表 clear 失败则整笔回滚，避免逐表 Promise.all 部分成功后留下残行。
+   */
   async clearAll(): Promise<void> {
-    await Promise.all(TABLE_NAMES.map((n) => db[n].clear()))
+    const stores = TABLE_NAMES.map((n) => db[n])
+    await db.transaction('rw', stores, async (tx) => {
+      for (const name of TABLE_NAMES) {
+        await tx.table(name).clear()
+      }
+    })
   },
 
   /**

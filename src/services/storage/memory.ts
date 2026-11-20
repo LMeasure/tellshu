@@ -28,10 +28,10 @@ import {
 } from './types'
 
 const INDEXED_FIELDS: Record<TableName, readonly string[]> = {
-  vocab: ['word_id', 'word', 'layer', 'next_review', 'added_at'],
-  reviewLog: ['id', 'word_id', 'at'],
+  vocab: ['word_id', 'word', 'layer', 'next_review', 'added_at', 'owner'],
+  reviewLog: ['id', 'word_id', 'at', 'uid', 'owner'],
   readings: ['id', 'created_at', 'type', 'on_shelf', 'owner'],
-  readingTime: ['date'],
+  readingTime: ['date', 'owner'],
   diagnose: ['id', 'at'],
   recitations: ['id', 'created_at', 'doc_id', 'owner'],
   dictEntries: ['key', 'word_lower', 'pos', 'updated_at'],

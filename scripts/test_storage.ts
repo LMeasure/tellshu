@@ -91,6 +91,26 @@ async function main() {
   assert(news.length === 2, `whereIndex('layer') 命中 2 行（实际 ${news.length}）`)
   await expectReject(vocab.whereIndex('srs_step', 0), '未建索引字段查询被显式拒绝（不静默全表扫）')
 
+  console.log('[storage] 内存索引白名单与 Dexie 对齐')
+  await storage.clearAll()
+  await vocab.put({ ...vocabRow('owned'), owner: 'guest' })
+  assert((await vocab.whereIndex('owner', 'guest')).length === 1, 'vocab.owner 可等值查询')
+  await logs.add({
+    word_id: 'owned',
+    at: 1,
+    correct: true,
+    quiz_form: 'dictation',
+    uid: 'uid-1',
+    owner: 'guest',
+  })
+  assert((await logs.whereIndex('uid', 'uid-1')).length === 1, 'reviewLog.uid 可等值查询')
+  assert((await logs.whereIndex('owner', 'guest')).length === 1, 'reviewLog.owner 可等值查询')
+  const times = storage.table('readingTime')
+  await times.put({ date: '2026-11-20', total_seconds: 3, dictation_seconds: 1, owner: 'guest' })
+  const byDate = await times.whereIndex('date', '2026-11-20')
+  assert(byDate.length === 1 && byDate[0]?.dictation_seconds === 1, 'readingTime.date 索引仍可用')
+  assert((await times.whereIndex('owner', 'guest')).length === 1, 'readingTime.owner 可等值查询')
+
   console.log('[storage] 领域逻辑跑在内存实现上')
   await storage.clearAll()
   const entry = await addToVocab({ id: 'w1', word: 'apple' })
