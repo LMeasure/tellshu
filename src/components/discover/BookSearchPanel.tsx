@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookOpen, Loader2, Search as SearchIcon } from 'lucide-react'
+import { BookOpen, BookmarkPlus, Check, Loader2, Search as SearchIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -7,10 +7,12 @@ import { ErrorState } from '@/components/ui/error-state'
 import { OfflineNotice } from '@/components/OfflineNotice'
 import { useOnline } from '@/lib/offline'
 import {
+  DISCOVER_SOURCE_SITE,
   searchBooks,
   BookSearchError,
   type BookHit,
 } from '@/domain/discover/search'
+import { isBookShelved, shelveDiscoveredBook } from '@/domain/learning'
 
 /**
  * 找书面板（Discover 页第 4 Tab，M4 之后接入）
@@ -27,7 +29,8 @@ import {
  *     5xx 由域层自动重试（最多 3 次尝试），到这里已是重试后仍失败。
  *   - 离线：OfflineNotice 提示需联网；按 lib/offline 口径，onLine
  *     只决定文案、不拦截请求（请求照发，失败自然走错误态）。
- *   - 无书籍详情页：卡片纯展示不可跳转（不造路由）。
+ *   - 无书籍详情页：卡片仍不可跳转（不造路由）。唯一动作是「入架」，
+ *     把发现书快照写入本地书架；正文不在本地，成功 toast 写明待接入。
  */
 
 type Phase =
@@ -67,8 +70,17 @@ export function BookSearchPanel() {
   /** 重试次数：点「重试」时自增，变化即重新触发检索（setSubmitted 同值不触发） */
   const [attempt, setAttempt] = useState(0)
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
+  /** 本轮已入架的 book_id。按钮据此在「入架 / 已在书架」之间切换。 */
+  const [shelved, setShelved] = useState<Set<string>>(() => new Set())
+  const [toast, setToast] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const shelvePendingRef = useRef<Set<string>>(new Set())
   const offline = !useOnline()
+
+  function showToast(msg: string) {
+    setToast(msg)
+    window.setTimeout(() => setToast(''), 2600)
+  }
 
   useEffect(() => {
     if (submitted === '') return
@@ -98,9 +110,55 @@ export function BookSearchPanel() {
     return () => controller.abort()
   }, [submitted, attempt])
 
+  useEffect(() => {
+    if (phase.kind !== 'done') return
+    let alive = true
+    const ids = [...new Set(phase.hits.map((h) => h.bookId).filter((id) => id !== ''))]
+    void Promise.all(
+      ids.map(async (bookId) => ((await isBookShelved(DISCOVER_SOURCE_SITE, bookId)) ? bookId : null)),
+    )
+      .then((flags) => {
+        if (!alive) return
+        setShelved((prev) => {
+          const next = new Set(prev)
+          for (const id of flags) if (id) next.add(id)
+          return next
+        })
+      })
+      .catch(() => {
+        // 读书架失败不挡住检索结果；入架按钮仍可点，失败另有 toast。
+      })
+    return () => {
+      alive = false
+    }
+  }, [phase])
+
   function submit() {
     if (text.trim() === '') return
     setSubmitted(text.trim())
+  }
+
+  async function onShelve(hit: BookHit) {
+    if (hit.bookId === '' || shelved.has(hit.bookId) || shelvePendingRef.current.has(hit.bookId)) return
+    shelvePendingRef.current.add(hit.bookId)
+    try {
+      await shelveDiscoveredBook({
+        title: hit.title,
+        author: hit.author,
+        source_site: DISCOVER_SOURCE_SITE,
+        source_id: hit.bookId,
+      })
+      setShelved((prev) => {
+        const next = new Set(prev)
+        next.add(hit.bookId)
+        return next
+      })
+      showToast('已加入书架，可在首页书架查看（正文待接入）')
+    } catch {
+      showToast('加入书架失败，请稍后重试')
+    } finally {
+      shelvePendingRef.current.delete(hit.bookId)
+    }
   }
 
   const loading = phase.kind === 'loading'
@@ -165,28 +223,53 @@ export function BookSearchPanel() {
             <span>本次检索 {phase.e2eMs.toFixed(0)} ms</span>
           </div>
           <div className="space-y-2">
-            {phase.hits.map((h, i) => (
-              <div
-                key={`${h.title}-${h.chunkIndex}-${i}`}
-                className="w-full rounded-lg border border-border/60 bg-card p-3 text-left shadow-soft"
-              >
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold">{h.title}</span>
-                  <span className="ml-auto shrink-0">
-                    <Badge>相似度 {h.score.toFixed(2)}</Badge>
-                  </span>
+            {phase.hits.map((h, i) => {
+              const onShelf = h.bookId !== '' && shelved.has(h.bookId)
+              const shelveLabel = onShelf ? '已在书架' : '入架'
+              return (
+                <div
+                  key={`${h.bookId}-${h.chunkId}-${h.chunkIndex}-${i}`}
+                  className="w-full rounded-lg border border-border/60 bg-card p-3 text-left shadow-soft"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold">{h.title}</span>
+                    <span className="ml-auto shrink-0">
+                      <Badge>相似度 {h.score.toFixed(2)}</Badge>
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {h.author}
+                    {h.chapterTitle !== null && h.chapterTitle !== '' && ` · ${h.chapterTitle}`}
+                  </div>
+                  <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-foreground/90">
+                    {h.content}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 h-9 px-3 text-xs"
+                    disabled={onShelf || h.bookId === ''}
+                    aria-label={onShelf ? `《${h.title}》已在书架` : `将《${h.title}》入架`}
+                    title={shelveLabel}
+                    onClick={() => void onShelve(h)}
+                  >
+                    {onShelf ? <Check className="h-4 w-4" /> : <BookmarkPlus className="h-4 w-4" />}
+                    {shelveLabel}
+                  </Button>
                 </div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  {h.author}
-                  {h.chapterTitle !== null && h.chapterTitle !== '' && ` · ${h.chapterTitle}`}
-                </div>
-                <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-foreground/90">
-                  {h.content}
-                </p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
+      )}
+
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-6">
+          <div className="rounded-full bg-foreground/90 px-4 py-2 text-xs text-background shadow-soft">
+            {toast}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import {
   getAllBooklists,
   getShelfBooks,
+  isDiscoveredBook,
   setDocBooklists,
   setOnShelf,
   toggleShelfPin,
@@ -230,6 +231,9 @@ export function Bookshelf() {
         <div className="flex gap-3 overflow-x-auto pb-1">
           {shelf.map((b) => {
             const isSelected = selected.has(b.id)
+            const discovered = isDiscoveredBook(b)
+            const discoveredSubtitle =
+              b.author !== undefined && b.author.trim() !== '' ? b.author : '待接入'
             return (
               <button
                 key={b.id}
@@ -253,9 +257,20 @@ export function Bookshelf() {
               >
                 <div className="relative mb-2 flex h-20 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 text-primary">
                   <BookOpen className="h-7 w-7" />
-                  {/* 置顶角标（排在前的原因要可见） */}
+                  {/* 发现书没有本地正文：左上角如实标「待接入」，不编造封面内容 */}
+                  {discovered && (
+                    <span className="absolute left-1 top-1 rounded-full bg-foreground/80 px-1.5 py-0.5 text-[10px] text-background">
+                      待接入
+                    </span>
+                  )}
+                  {/* 置顶角标（排在前的原因要可见）；与「待接入」同时存在时下移，避免盖住 */}
                   {b.pinned_at !== undefined && (
-                    <span className="absolute left-1 top-1 flex items-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                    <span
+                      className={cn(
+                        'absolute left-1 flex items-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground',
+                        discovered ? 'top-6' : 'top-1',
+                      )}
+                    >
                       <Pin className="h-3 w-3" /> 置顶
                     </span>
                   )}
@@ -271,8 +286,12 @@ export function Bookshelf() {
                   )}
                 </div>
                 <div className="truncate text-sm font-medium">{b.title}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {b.booklists && b.booklists.length > 0 ? b.booklists[0] : `${b.word_count} 词`}
+                <div className="truncate text-[11px] text-muted-foreground">
+                  {discovered
+                    ? discoveredSubtitle
+                    : b.booklists && b.booklists.length > 0
+                      ? b.booklists[0]
+                      : `${b.word_count} 词`}
                 </div>
               </button>
             )

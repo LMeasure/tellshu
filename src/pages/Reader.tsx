@@ -66,6 +66,7 @@ import {
   addReadingTime,
   addDictationTime,
   getReading,
+  isDiscoveredBook,
   saveDictationProgress,
   getRecitationsByDoc,
   addRecitation,
@@ -83,6 +84,11 @@ import {
 import { useAppStore, type ReaderPrefs } from '@/store/useAppStore'
 import type { AnnotationColor, AnnotationStyle } from '@/domain/types'
 import type { ContentWord } from '@/data/types'
+
+/** 发现书已入架但正文仍空：不进入翻页 / 听书 / 默写，只展示待接入。 */
+function isPendingDiscoveredBody(doc: ReadingDoc | null | undefined): boolean {
+  return !!doc && isDiscoveredBook(doc) && doc.content.trim() === ''
+}
 
 /**
  * 阅读器 V3.0（2026-10-09 需求梳理）
@@ -441,12 +447,12 @@ export function Reader() {
   }, [doc?.id, paragraphs.length, pages.length])
 
   useEffect(() => {
-    if (!doc) return
+    if (!doc || isPendingDiscoveredBody(doc)) return
     updateReadingPage(doc.id, page)
   }, [doc?.id, page])
 
   useEffect(() => {
-    if (!doc) return
+    if (!doc || isPendingDiscoveredBody(doc)) return
     const tick = window.setInterval(() => {
       if (!listenRef.current && document.visibilityState === 'visible' && mode === 'read') {
         addReadingTime(15)
@@ -458,7 +464,7 @@ export function Reader() {
   // 默写时长：学习时间的「默写」子分支。计时器运行中（点锁自动开始/输入框聚焦自动续走）
   // 且处于记忆模式时按 15s 心跳入账，与阅读时长同表分列、互不混算。
   useEffect(() => {
-    if (!doc) return
+    if (!doc || isPendingDiscoveredBody(doc)) return
     const tick = window.setInterval(() => {
       if (memoRunning && document.visibilityState === 'visible' && mode !== 'read') {
         addDictationTime(15)
@@ -469,7 +475,7 @@ export function Reader() {
 
   /* ---------------- 恢复 / 保存默写进度 ---------------- */
   useEffect(() => {
-    if (!doc || progressLoadedRef.current) return
+    if (!doc || isPendingDiscoveredBody(doc) || progressLoadedRef.current) return
     progressLoadedRef.current = true
     const p = doc.dictation
     if (!p) return
@@ -486,7 +492,7 @@ export function Reader() {
   }, [doc])
 
   useEffect(() => {
-    if (!doc || !progressLoadedRef.current) return
+    if (!doc || isPendingDiscoveredBody(doc) || !progressLoadedRef.current) return
     const t = window.setTimeout(() => {
       saveDictationProgress(doc.id, {
         mode: maskConfig.mode,
@@ -1240,6 +1246,25 @@ export function Reader() {
   if (doc === undefined) return <div className="p-6 text-sm text-muted-foreground">加载中…</div>
   if (doc === null) {
     return <EmptyState icon={BookOpen} title="素材不存在" description="该导入素材可能已被删除。" />
+  }
+  if (isPendingDiscoveredBody(doc)) {
+    return (
+      <EmptyState
+        icon={BookOpen}
+        title="正文待接入"
+        description="来自发现书库，全文阅读待线4/PG 接入，当前仅支持入架收藏"
+        action={
+          <Button
+            variant="outline"
+            aria-label="返回"
+            title="返回"
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+          >
+            返回
+          </Button>
+        }
+      />
+    )
   }
 
   const chapters = doc.chapters ?? []

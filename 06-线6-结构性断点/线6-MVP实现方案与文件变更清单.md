@@ -1,7 +1,7 @@
 # 线6-MVP实现方案与文件变更清单（先入架、后全文 最小闭环）
 
 > 责任：线6（主线第二部分）唯一执行 Worker，task_id=task-3
-> 状态：只读 PREP（未写任何源码）。GO 由 Orchestrator 在负责人会签卡 B-B7 选「先入架后全文」后发出。
+> 状态：B7-A 已于 2026-11-20 由负责人批准（先入架后全文）。实现在分支 `feature/line6-booklink-shelf` 上进行；尚未合并，未经独立核验。
 > 红线：不编造正文/释义；查不到显示「未收录/待接入」；空数据走 EmptyState；平台 API 只在 src/services/*/web.ts；技术栈版本不动；图标按钮带 aria-label+title；本轮只做离线侧 Dexie 关联，正文阅读留待线4/PG。
 
 ---
@@ -121,8 +121,9 @@
 
 agent=line6-mvp
 task_id=task-3
-status=PREP_DONE
-files_touched=NONE
-verification=tsc:N/A,test:N/A,build:N/A,pwa:N/A
-evidence=《线6-MVP实现方案与文件变更清单.md》
+status=IMPLEMENTED_UNMERGED
+files_touched=scripts/test_book_shelf.ts, src/domain/discover/search.ts, src/domain/types.ts, src/domain/learning.ts, src/components/discover/BookSearchPanel.tsx, src/components/home/Bookshelf.tsx, src/pages/Reader.tsx, scripts/test_discover.ts, package.json, 06-线6-结构性断点/README.md, 本文件
+verification=本分支自测（2026-11-20），未经独立核验，PR 未合并。npx tsc --noEmit 退出码 0；npm test 退出码 0（链尾 test_book_shelf.ts 通过）；npm run build 退出码 0（vite build 成功，PWA generateSW）；python scripts/check_pwa.py 退出码 0（10 项通过）。
+evidence=分支 feature/line6-booklink-shelf
 decision_needed=
+note=B7-A 已于 2026-11-20 由负责人批准。实现进行中的落点是本分支；尚未合并，未经独立核验。

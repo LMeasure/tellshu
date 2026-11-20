@@ -23,8 +23,18 @@ import {
 } from '@/data/discoverClient'
 import { ApiRequestError } from '@/data/asrClient'
 
+/**
+ * 发现书来源站点快照。/api/discover 目前不返回 source_site，
+ * 入架时前端固定写这个常量（与面板「Project Gutenberg 公版库」文案一致）。
+ */
+export const DISCOVER_SOURCE_SITE = 'gutenberg'
+
 /** UI 友好的检索命中（snake_case → camelCase 在域层一次做完） */
 export interface BookHit {
+  /** /api/discover 的 book_id；入架时作为 source_id 快照 */
+  bookId: string
+  /** /api/discover 的 chunk_id（片段标识，入架按书不按片段） */
+  chunkId: number
   title: string
   author: string
   /** 章节名；front matter 块为 null，如实不显示该行（不编造章节） */
@@ -72,6 +82,8 @@ const MAX_ATTEMPTS = 3 // 共 3 次尝试（首次 + 2 次重试）；口径同 
 
 function toBookHit(item: DiscoverResultItem): BookHit {
   return {
+    bookId: item.book_id,
+    chunkId: item.chunk_id,
     title: item.title,
     author: item.author,
     chapterTitle: item.chapter_title,
