@@ -65,18 +65,22 @@ export async function generateStudyNoteStream(
   }
 
   if (!response.ok) {
-    // 503 未接入 / 400 坏请求：读 JSON 错误体（与 asrClient 口径一致）
+    // 503 未接入 / 400 坏请求：读 JSON 错误体（与 asrClient 口径一致）；
+    // 代理层 503（code=backend_unreachable，后端没启动）原样带 code 上抛，
+    // 供 UI 与「AI 未接入」区分——后端没启动 ≠ AI 未接入。
     const text = await response.text().catch(() => '')
     let message = `请求失败（HTTP ${response.status}）`
+    let code: string | undefined
     if (text !== '') {
       try {
-        const payload = JSON.parse(text) as { error?: { message?: string } }
+        const payload = JSON.parse(text) as { error?: { message?: string; code?: string } }
         if (payload.error?.message !== undefined) message = payload.error.message
+        if (typeof payload.error?.code === 'string') code = payload.error.code
       } catch {
         /* 非 JSON 错误体：用默认文案，不把原始响应透给用户 */
       }
     }
-    throw new ApiRequestError(response.status, message)
+    throw new ApiRequestError(response.status, message, code)
   }
   if (response.body === null) {
     throw new ApiRequestError(response.status, '服务返回了空响应体')

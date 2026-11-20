@@ -11,13 +11,14 @@ import {
   Mic,
   Play,
   Pause,
-  Shuffle,
   Trash2,
   Eye,
+  EyeOff,
+  Lock,
+  KeyRound,
   Pencil,
-  X,
 } from 'lucide-react'
-import { IconReset } from '@/components/icons/shushu'
+import { IconReset, IconBroom } from '@/components/icons/shushu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Sheet } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,7 @@ import {
   isInVocab,
   updateReadingPage,
   addReadingTime,
+  addDictationTime,
   getReading,
   saveDictationProgress,
   getRecitationsByDoc,
@@ -132,8 +134,11 @@ const MARGIN_PX: Record<ReaderPrefs['margin'], number> = { sm: 16, md: 24, lg: 3
 
 /** 正文上下内边距合计（pt-4 + pb-8 = 16 + 32） */
 const PAGE_PAD_Y = 48
-/** 分页安全余量：避免亚像素误差导致最后一行被裁掉 */
-const PAGE_SAFETY = 6
+/** 分页安全余量：避免亚像素/字体度量误差导致最后一行被裁掉（需求 5：严禁截断） */
+/** 一页一屏：上下内边距之外再加一整行的安全余量——末行测高偏差/浏览器底栏都吃在这里 */
+const PAGE_SAFETY = 40
+/** 底部导航栏高度（h-14 = 56px）：分页预算预留，严防导航栏弹出时遮挡末行文字 */
+const NAV_RESERVE = 56
 /** 首行缩进宽度（与 tailwind indent-8 = 2rem 一致） */
 const INDENT_PX = 32
 
@@ -236,6 +241,7 @@ export function Reader() {
   const [mode, setMode] = useState<Mode>('read')
   /** 综合控制中心：null = 关闭 */
   const [panelTab, setPanelTab] = useState<PanelTab | null>(null)
+  const [navOpen, setNavOpen] = useState(false)
   const [remainingSec, setRemainingSec] = useState<number | null>(null)
   /** 点击正文虚线笔记标识弹出的详情卡 */
   const [noteDetail, setNoteDetail] = useState<ReadingAnnotation | null>(null)
@@ -252,6 +258,8 @@ export function Reader() {
   const [toast, setToast] = useState('')
   const lastStyleRef = useRef<AnnotationStyle>('highlight')
   const lastColorRef = useRef<AnnotationColor>('yellow')
+  /** 本次划词已创建过批注的 span key → annotation id，避免连续换色/线型时重复新建 */
+  const annotatedKeysRef = useRef<Map<string, string>>(new Map())
   const pullStartRef = useRef<{ y: number; inTop: boolean } | null>(null)
   const [ribbonAnim, setRibbonAnim] = useState(false)
 
@@ -264,6 +272,8 @@ export function Reader() {
   const [values, setValues] = useState<Record<string, string>>({})
   const [memoRunning, setMemoRunning] = useState(false)
   const [memoSeconds, setMemoSeconds] = useState(0)
+  /** 睁眼：临时显示被隐藏的单词；闭眼（默认）正常默写 */
+  const [revealHidden, setRevealHidden] = useState(false)
   const progressLoadedRef = useRef(false)
 
   /* ---------------- 录音状态 ---------------- */
@@ -285,6 +295,21 @@ export function Reader() {
 
   const [avail, setAvail] = useState({ w: 0, h: 0 })
   const [fitPages, setFitPages] = useState<FitPage[] | null>(null)
+  /** 字体加载完成后再重测一次分页：避免系统字体未就绪导致测量偏低、整页溢出被裁（需求 5） */
+  const [fontsReady, setFontsReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      document.fonts.ready.then(() => {
+        if (alive) setFontsReady(true)
+      })
+    } else {
+      setFontsReady(true)
+    }
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -318,7 +343,7 @@ export function Reader() {
     return () => ro.disconnect()
   }, [])
 
-  // 按真实高度分页：测量探针与正文同字号/行距/字体/宽度
+  // 按真实高度分页：测量探针与正文同字号/行距/字体/宽度（字体就绪后重测一次）
   useLayoutEffect(() => {
     const probe = measureRef.current
     const stage = stageRef.current
@@ -328,7 +353,9 @@ export function Reader() {
     }
     const padX = MARGIN_PX[prefs.margin]
     const contentW = Math.max(80, avail.w - padX * 2)
-    const pageH = Math.max(60, avail.h - PAGE_PAD_Y - PAGE_SAFETY)
+    // 一页一屏：总可用高度扣除上下内边距 + 安全余量 + 底部导航栏高度
+    // （导航栏为 fixed 浮层，弹出时会盖住底部，故分页末行必须预留其高度，严禁被遮挡/截断）
+    const pageH = Math.max(60, avail.h - PAGE_PAD_Y - PAGE_SAFETY - NAV_RESERVE)
     probe.style.width = `${contentW}px`
     probe.style.fontSize = `${prefs.fontSize}px`
     probe.style.lineHeight = String(prefs.lineHeight)
@@ -352,6 +379,7 @@ export function Reader() {
     prefs.indent,
     avail.w,
     avail.h,
+    fontsReady,
   ])
 
   // 测量未就绪时的兜底：字符预算分页（整段不拆）
@@ -426,6 +454,18 @@ export function Reader() {
     }, 15_000)
     return () => window.clearInterval(tick)
   }, [doc, mode])
+
+  // 默写时长：学习时间的「默写」子分支。计时器运行中（点锁自动开始/输入框聚焦自动续走）
+  // 且处于记忆模式时按 15s 心跳入账，与阅读时长同表分列、互不混算。
+  useEffect(() => {
+    if (!doc) return
+    const tick = window.setInterval(() => {
+      if (memoRunning && document.visibilityState === 'visible' && mode !== 'read') {
+        addDictationTime(15)
+      }
+    }, 15_000)
+    return () => window.clearInterval(tick)
+  }, [doc, memoRunning, mode])
 
   /* ---------------- 恢复 / 保存默写进度 ---------------- */
   useEffect(() => {
@@ -772,17 +812,29 @@ export function Reader() {
   }
 
   /**
-   * 单击正文：强制清除选区 + Toggle 控制中心（V3.0 需求一/三）。
-   * 首次打开默认落在「设置」页。
+   * 单击正文：强制清除选区 + Toggle 导航栏（V3.3 细化）。
+   * 只切换导航栏显隐，默认不弹出任何面板（阅读/记忆等需点对应图标才出现）。
    */
   function togglePanel() {
+    // 存在活跃选区（刚划完词）时，单击不响应、不清选区，交还划词菜单处理
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed) return
     clearSelection()
     setPopup(null)
-    setPanelTab((cur) => (cur === null ? 'settings' : null))
+    setNavOpen((v) => !v)
+    setPanelTab(null)
   }
 
   function closePanel() {
     setPanelTab(null)
+  }
+
+  /** 全局弹窗关闭：清空导航栏 + 设置面板 + 划线菜单，恢复纯阅读（点空白处 / 遮罩触发） */
+  function closeAllOverlays() {
+    setNavOpen(false)
+    setPanelTab(null)
+    setPopup(null)
+    clearSelection()
   }
 
   useEffect(() => {
@@ -800,6 +852,8 @@ export function Reader() {
   useEffect(() => {
     if (mode !== 'read') return
     let timer = 0
+    // 手指/鼠标按着期间不弹菜单：长按选完、抬起后再弹（pointer + touch 双通道判定）
+    let pressing = false
     function check() {
       const root = rootRef.current
       if (!root) return
@@ -808,11 +862,30 @@ export function Reader() {
       else if (!holdPopupRef.current) setPopup(null)
     }
     function onChange() {
+      if (pressing) return // 还按着屏幕：先不弹
       window.clearTimeout(timer)
       timer = window.setTimeout(check, 150)
     }
+    function press() {
+      pressing = true
+    }
+    function release() {
+      if (!pressing) return
+      pressing = false
+      // 抬起后稍等一拍再查选区（长按产生的选区此时已就绪）
+      window.clearTimeout(timer)
+      timer = window.setTimeout(check, 60)
+    }
+    window.addEventListener('pointerdown', press, true)
+    window.addEventListener('pointerup', release, true)
+    window.addEventListener('touchstart', press, true)
+    window.addEventListener('touchend', release, true)
     document.addEventListener('selectionchange', onChange)
     return () => {
+      window.removeEventListener('pointerdown', press, true)
+      window.removeEventListener('pointerup', release, true)
+      window.removeEventListener('touchstart', press, true)
+      window.removeEventListener('touchend', release, true)
       document.removeEventListener('selectionchange', onChange)
       window.clearTimeout(timer)
     }
@@ -842,25 +915,30 @@ export function Reader() {
   async function handleAnnotate(style: AnnotationStyle, color: AnnotationColor) {
     const s = popup
     if (!s || !doc) return
-    holdPopupRef.current = false
+    holdPopupRef.current = true // 菜单保持打开：选颜色/线型实时生效，允许继续修改，点外部才关
     lastStyleRef.current = style
     lastColorRef.current = color
     for (const span of s.spans) {
       const paraText = paragraphs[span.para] ?? ''
-      await addAnnotation({
-        doc_id: doc.id,
-        page: paraPage[span.para] ?? 0,
-        para: span.para,
-        start: span.start,
-        end: span.end,
-        text: paraText.slice(span.start, span.end),
-        kind: 'underline',
-        style,
-        color,
-      })
+      const key = `${span.para}:${span.start}:${span.end}`
+      const existingId = annotatedKeysRef.current.get(key)
+      if (existingId) {
+        await updateAnnotation(existingId, { style, color })
+      } else {
+        const created = await addAnnotation({
+          doc_id: doc.id,
+          page: paraPage[span.para] ?? 0,
+          para: span.para,
+          start: span.start,
+          end: span.end,
+          text: paraText.slice(span.start, span.end),
+          kind: 'underline',
+          style,
+          color,
+        })
+        annotatedKeysRef.current.set(key, created.id)
+      }
     }
-    clearSelection()
-    setPopup(null)
     loadAnnotations()
     showToast('已划线')
   }
@@ -1193,7 +1271,15 @@ export function Reader() {
             <div className="truncate font-semibold">{doc.title}</div>
             <div className="text-xs reader-muted">
               {LANG_LABEL[docLang]} · {unitLabel(docLang, doc.word_count)} ·{' '}
-              {doc.type === 'audio' ? '音频' : doc.type === 'book' ? '书籍' : '文章'}
+              {doc.type === 'audio'
+                ? (doc.media_type ?? '').startsWith('video/')
+                  ? '视频'
+                  : '音频'
+                : doc.type === 'book'
+                  ? '书籍'
+                  : doc.type === 'transcript'
+                    ? '字幕'
+                    : '文章'}
               {chapters.length > 0 ? ` · ${chapters.length} 章` : ''} · 第 {page + 1}/{pages.length} 页
             </div>
           </div>
@@ -1234,7 +1320,17 @@ export function Reader() {
       </header>
 
       {/* 内容区（固定高度：视口高 - 顶栏；测量探针也挂在这里） */}
-      <div ref={stageRef} className="relative flex min-h-0 flex-1 flex-col" style={brightness}>
+      <div
+        ref={stageRef}
+        className="relative flex min-h-0 flex-1 flex-col"
+        style={brightness}
+        onContextMenu={(e) => {
+          // 划词：屏蔽系统原生「复制 / 搜索」菜单，只允许自定义划词弹窗
+          const t = e.target as HTMLElement
+          if (t.closest('input,textarea,[contenteditable="true"]')) return
+          e.preventDefault()
+        }}
+      >
         <div ref={measureRef} className="measure-probe" aria-hidden />
 
         {mode === 'read' ? (
@@ -1259,38 +1355,46 @@ export function Reader() {
             }}
           >
             <div className="space-y-4">
-              {maskConfig.mode === 'manual' && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant={selecting ? 'accent' : 'secondary'}
-                    size="sm"
-                    onClick={() => setSelecting((s) => !s)}
-                  >
-                    <Shuffle className="h-4 w-4" />
-                    {selecting ? '完成选择' : '继续选择'}
-                  </Button>
-                  <span className="text-xs reader-muted">
-                    {selecting
-                      ? '横向滑动可连续选中一串词，纵向滑动照常滚动页面；再滑一次即取消'
-                      : `已选 ${manualKeys.length} 个${docLang === 'zh' ? '词组' : '词'}，可随时继续选择`}
-                  </span>
-                  {manualKeys.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={() => setManualKeys([])}>
-                      <X className="h-3.5 w-3.5" /> 清空选择
-                    </Button>
-                  )}
-                </div>
-              )}
-
+              {/* 记忆栏（顺序：计时 → 循环 → 显隐 → 选择 → 清空） */}
               <div className="flex items-center gap-2">
                 <MemoTimer
                   running={memoRunning}
                   seconds={memoSeconds}
                   onToggle={() => setMemoRunning((r) => !r)}
                 />
-                <Button variant="secondary" size="sm" onClick={resetPage}>
-                  <IconReset className="h-4 w-4" /> 清空本页
-                </Button>
+                <IconAction label="清空本页" onClick={resetPage}>
+                  <IconReset className="h-4 w-4" />
+                </IconAction>
+                <IconAction
+                  label={revealHidden ? '闭眼：隐藏答案' : '睁眼：显示答案'}
+                  active={revealHidden}
+                  onClick={() => setRevealHidden((v) => !v)}
+                >
+                  {revealHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </IconAction>
+                {maskConfig.mode === 'manual' && (
+                  <>
+                    <IconAction
+                      label={selecting ? '完成选择' : '开始选择'}
+                      active={selecting}
+                      onClick={() =>
+                        setSelecting((s) => {
+                          const next = !s
+                          // 点锁（完成选择）→ 自动开始计时
+                          if (!next) setMemoRunning(true)
+                          return next
+                        })
+                      }
+                    >
+                      {selecting ? <Lock className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
+                    </IconAction>
+                    {manualKeys.length > 0 && (
+                      <IconAction label="清空选择" onClick={() => setManualKeys([])}>
+                        <IconBroom className="h-4 w-4" />
+                      </IconAction>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1319,6 +1423,11 @@ export function Reader() {
                   selectable={maskConfig.mode === 'manual'}
                   selecting={selecting && maskConfig.mode === 'manual'}
                   onToggleSlot={handleToggleSlot}
+                  reveal={revealHidden}
+                  onInputFocus={() => {
+                    // 手动暂停后光标进入输入框 → 自动继续计时
+                    setMemoRunning(true)
+                  }}
                 />
               </div>
 
@@ -1422,12 +1531,21 @@ export function Reader() {
         )}
       </div>
 
+      {/* 全局遮罩：点击空白处清空所有弹窗（导航栏 / 设置面板 / 划线菜单），恢复纯阅读 */}
+      {(panelTab !== null || popup !== null) && (
+        <div
+          className="fixed inset-0 z-40 bg-black/30"
+          onClick={closeAllOverlays}
+          aria-hidden
+        />
+      )}
+
       {/* 综合控制中心：目录 / 笔记 / 进度 / 听书 / 设置 */}
       <ReaderControlCenter
-        open={panelTab !== null}
-        tab={panelTab ?? 'settings'}
+        open={navOpen}
+        tab={panelTab}
         onTabChange={(t) => setPanelTab(t)}
-        onClose={closePanel}
+        onClose={closeAllOverlays}
         toc={{
           page,
           chapters: chapterItems,
@@ -1463,10 +1581,10 @@ export function Reader() {
           remainingSec,
         }}
         settings={{
-          tab: mode,
-          onTabChange: (t) => {
-            setMode(t)
-            setSelecting(t === 'memo' && maskConfig.mode === 'manual')
+          mode,
+          onModeChange: (m) => {
+            setMode(m)
+            setSelecting(m === 'memo' && maskConfig.mode === 'manual')
             setMemoSeconds(0)
             setMemoRunning(false)
             setShowCompare(false)

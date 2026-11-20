@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Volume2,
   Mic,
@@ -12,6 +12,8 @@ import type { ContentWord } from '@/data/types'
 import { useAppStore } from '@/store/useAppStore'
 import { IconExpandCrown, IconCollapseBars } from '@/components/icons/shushu'
 import { cn } from '@/lib/utils'
+import { parseDefinitionZh } from '@/lib/wordSense'
+import { WordCardExampleList } from '@/components/learning/WordCardExampleList'
 import {
   speakFocused,
   isSpeechSupported,
@@ -29,8 +31,31 @@ import {
  */
 export function WordCard({ word }: { word: ContentWord }) {
   const { settings } = useAppStore()
-  const showChinese = settings.chineseAssist
-  const zh = word.definition_zh ?? word.definition_en
+  /**
+ * `chineseAssist`（设置页「中文辅助」）在学习卡里**只管助记提示（💡 word_hint）**；
+ *   例句的中文翻译**常驻显示**（本轮统一：全局固定展示，不再受开关控制）。
+ * 核心中文释义**永远显示**（2026-10-31 用户拍板）：释义是这张卡的主信息，
+   * 不该因为一个「辅助」开关就没了 —— 尤其是零基础用户，看不懂释义这张卡就没有意义。
+   * 注意：本文件只服务学习页 /learn；WordDetail 与其它页面的既有逻辑一行未动。
+   */
+  const showChineseAssist = settings.chineseAssist
+  /**
+   * 释义分组（2026-10-31 修复「释义不显示 / 多义项挤成一行」）：
+   * 真实数据里 definition_zh 是一整串带词性前缀的中文释义，例如
+   *   by → "prep. 在...旁边；通过（某种方式）；…；adv. 经过；附近；搁置"
+   * 以前直接整串塞进一个 <p>，词性不分列、义项不逐条（全库 89.6% 的词条是多义项）。
+   * 这里改用详情页同款纯函数 parseDefinitionZh 切分后分列展示，**一条不丢**。
+   * 中文释义为空时才退回英文释义；两者都没有就显示明确提示，绝不留下空白。
+   */
+  const groups = useMemo(
+    () => parseDefinitionZh(word.definition_zh ?? word.definition_en),
+    [word.definition_zh, word.definition_en],
+  )
+  /** 词性列按本词最长词性留位（对齐单词详情页口径），位置固定不跳动 */
+  const posColWidth = useMemo(() => {
+    const maxLen = groups.reduce((m, g) => Math.max(m, (g.pos || word.pos || '释义').length), 0)
+    return `${Math.min(Math.max(maxLen, 2), 12)}ch`
+  }, [groups, word.pos])
   const examples = word.examples?.length
     ? word.examples
     : word.example_en
@@ -112,12 +137,41 @@ export function WordCard({ word }: { word: ContentWord }) {
         </div>
       </div>
 
-      {showChinese && zh && (
-        <p className="mt-3 text-base leading-relaxed text-foreground">{zh}</p>
+      {groups.length > 0 ? (
+        <div className="mt-3 space-y-2" data-testid="word-senses">
+          {groups.map((g, gi) => (
+            <div key={`${g.pos}-${gi}`} className="flex items-start gap-2">
+              {/* 词性标签：固定宽度独立列（宽=本词最长词性），右侧与释义统一间距由 gap-2 保证 */}
+              <span
+                className="shrink-0 text-[13px] italic leading-relaxed text-muted-foreground"
+                style={{ width: posColWidth }}
+              >
+                {g.pos || word.pos || '释义'}
+              </span>
+              {/* 同词性多义项用中文分号「；」连成同一行；超出一行时在本 <p> 内自然换行，
+                  续行左边缘对齐到释义文字起点（而非词性标签）。布局用 flex，不用空格对齐。 */}
+              <p
+                className="min-w-0 flex-1 break-words text-base leading-relaxed text-foreground"
+                data-testid="word-sense-line"
+              >
+                {g.senses.join('；')}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* 确实没有释义数据才提示（与开关无关），绝不显示空白 */
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="word-senses-empty">
+          该词暂未收录释义。
+        </p>
       )}
 
-      {word.word_hint && (
-        <div className="mt-3 rounded-md bg-secondary/60 px-3 py-2 text-sm text-secondary-foreground">
+      {/* 助记提示属于「额外辅助」：中文辅助关闭时收起 */}
+      {showChineseAssist && word.word_hint && (
+        <div
+          className="mt-3 rounded-md bg-secondary/60 px-3 py-2 text-sm text-secondary-foreground"
+          data-testid="word-hint"
+        >
           💡 {word.word_hint}
         </div>
       )}
@@ -155,16 +209,10 @@ export function WordCard({ word }: { word: ContentWord }) {
             {/* 需求 22 / 23：展开用 9 号双下箭，收起用两条平杠（同框同风格） */}
             <IconExpandCrown className="h-4 w-4 group-open:hidden" />
             <IconCollapseBars className="hidden h-4 w-4 group-open:block" />
-            双语例句（{examples.length}）
+            {'双语例句'}（{examples.length}）
           </summary>
-          <ul className="mt-2 space-y-2 text-sm">
-            {examples.map((ex, i) => (
-              <li key={i} className="rounded-md border border-border/50 p-2">
-                <p className="text-foreground">{ex.en}</p>
-                {ex.zh && <p className="mt-0.5 text-muted-foreground">{ex.zh}</p>}
-              </li>
-            ))}
-          </ul>
+          {/* 例句列表：英文可点词查词，中文翻译随「中文辅助」开关 */}
+          <WordCardExampleList examples={examples} />
         </details>
       )}
 

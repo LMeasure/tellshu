@@ -1,0 +1,429 @@
+{
+  "startedAt": "2026-11-01T13:18:56.588Z",
+  "base": "http://127.0.0.1:4174",
+  "checks": [
+    {
+      "id": "A0",
+      "name": "首进：第 1 个词 + 卡片渲染",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "A1-a",
+      "name": "左滑一次到第 2 个词",
+      "ok": true,
+      "detail": "word=as"
+    },
+    {
+      "id": "A1-b",
+      "name": "学 1 个词后退出再进入：停在第 2 个词（不回到第 1 个）",
+      "ok": true,
+      "detail": "word=as"
+    },
+    {
+      "id": "A1-c",
+      "name": "已完成计数恢复",
+      "ok": true,
+      "detail": "2/10 | 第 1 / 452 组 | · | 已学 1 | · | 剩余 4514 | as | adv. | adv. | conj. | prep. |  |  |  |  |  |  | . |  |  |  | , |  |  "
+    },
+    {
+      "id": "A2-a",
+      "name": "连学两个词后位置 = 第 4 个",
+      "ok": true,
+      "detail": "word=ax"
+    },
+    {
+      "id": "A2-b",
+      "name": "学多个词后退出再进入：从中断位置继续",
+      "ok": true,
+      "detail": "word=ax"
+    },
+    {
+      "id": "A2-c",
+      "name": "已完成数与实际一致（已学 3）",
+      "ok": true,
+      "detail": "4/10 | 第 1 / 452 组 | · | 已学 3 | · | 剩余 4512 | ax | n. | n. | vt. |  |  |  |  |  |  |  | . |  |  |  |  |  |  |  | . |  | "
+    },
+    {
+      "id": "A3",
+      "name": "刷新浏览器后进度不丢失",
+      "ok": true,
+      "detail": "word=ax"
+    },
+    {
+      "id": "A4-a",
+      "name": "右滑回到上一个词（第 3 个）",
+      "ok": true,
+      "detail": "word=at"
+    },
+    {
+      "id": "A4-b",
+      "name": "回看已学词不改动完成数",
+      "ok": true,
+      "detail": "3/10 | 第 1 / 452 组 | · | 已学 3 | · | 剩余 4512 | at | prep. | prep. |  |  |  |  |  |  |  |  | . |  |  |  |  |  | 9:00 |  | "
+    },
+    {
+      "id": "A4-c",
+      "name": "再左滑回到中断位置（第 4 个）",
+      "ok": true,
+      "detail": "word=ax"
+    },
+    {
+      "id": "A5",
+      "name": "已在生词本的词被跳过：首进落在第 3 个词",
+      "ok": true,
+      "detail": "word=at"
+    },
+    {
+      "id": "A5-b",
+      "name": "已学计数与生词本一致（已学 2）",
+      "ok": true,
+      "detail": "3/10 | 第 1 / 452 组 | · | 已学 2 | · | 剩余 4513 | at | prep. | prep. |  |  |  |  |  |  |  |  | . |  |  |  |  |  | 9:00 |  | "
+    },
+    {
+      "id": "B1",
+      "name": "释义区渲染出来了（不是空白）",
+      "ok": true,
+      "detail": "groups=1 items=1"
+    },
+    {
+      "id": "B1-b",
+      "name": "中文辅助开启：例句中文翻译与助记提示都在",
+      "ok": true,
+      "detail": "exampleZh=3 wordHint=false"
+    },
+    {
+      "id": "B2",
+      "name": "多词性单词：词性分组全部展示（by = prep. + adv.）",
+      "ok": true,
+      "detail": "word=by groups=2"
+    },
+    {
+      "id": "B3",
+      "name": "多义项单词：一条不丢（by = 7 义项，同词性用 ； 连在同一行，共 2 行）",
+      "ok": true,
+      "detail": "word=by lines=2 全在=true"
+    },
+    {
+      "id": "B4",
+      "name": "中文释义正文完整（首义项与末义项都在）",
+      "ok": true,
+      "detail": "by / prep. / /baɪ/ / prep. /  / 在...旁边；通过（某种方式）；由（某人完成）；到（某时）之前 /  / adv. /  / 经过；附近；搁置 /  / 双语例句（3） /  / She stood by the window, watching the ra"
+    },
+    {
+      "id": "B5-a",
+      "name": "词包到位前显示加载态（骨架 + 提示），不是空白卡片",
+      "ok": true,
+      "detail": "sawLoading=true"
+    },
+    {
+      "id": "B5-b",
+      "name": "加载结束后释义正常显示（不永久空白）",
+      "ok": true,
+      "detail": "groups=2 items=2"
+    },
+    {
+      "id": "B6",
+      "name": "🔴 关闭中文辅助：核心中文释义**仍然显示**（不因开关消失）",
+      "ok": true,
+      "detail": "groups=2 items=2 空提示=无"
+    },
+    {
+      "id": "B6-b",
+      "name": "🔴 关闭中文辅助：例句中文翻译仍显示（全局常驻）、英文例句仍在",
+      "ok": true,
+      "detail": "exampleEn=3 exampleZh=3"
+    },
+    {
+      "id": "B6-c",
+      "name": "关闭中文辅助：助记提示收起",
+      "ok": true,
+      "detail": "wordHint=false"
+    },
+    {
+      "id": "B6-d",
+      "name": "关闭中文辅助：词根词缀 / 词源不受影响",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "B7-a",
+      "name": "同词性多义项用中文分号连接在同一行（不拆 li）",
+      "ok": true,
+      "detail": "lines=在...旁边；通过（某种方式）；由（某人完成）；到（某时）之前 || 经过；附近；搁置"
+    },
+    {
+      "id": "B7-b",
+      "name": "不同词性换行（by = 2 行）",
+      "ok": true,
+      "detail": "count=2"
+    },
+    {
+      "id": "B7-c",
+      "name": "🔴 所有释义左边缘严格对齐（同一垂直起始线）",
+      "ok": true,
+      "detail": "lefts=90,90"
+    },
+    {
+      "id": "B7-d",
+      "name": "词性标签固定列宽一致",
+      "ok": true,
+      "detail": "widths=38,38"
+    },
+    {
+      "id": "C0",
+      "name": "起始词 = ad",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "C1",
+      "name": "轻微横移（20px）不触发切换",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "C2",
+      "name": "左滑 → 下一个单词",
+      "ok": true,
+      "detail": "word=as"
+    },
+    {
+      "id": "C3",
+      "name": "右滑 → 上一个单词",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "C4",
+      "name": "第一张继续右滑：仍是 ad，卡片不空白",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "C5",
+      "name": "竖向滑动：单词不变（不误切换）",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "C5-b",
+      "name": "竖向滑动：页面可滚动（长内容看得到）",
+      "ok": true,
+      "detail": "scrollY 0 → 190"
+    },
+    {
+      "id": "C6",
+      "name": "快速连滑三次：正好前进 3 个（不跳词、不重复）",
+      "ok": true,
+      "detail": "word=ax（期望 ax）"
+    },
+    {
+      "id": "C6-b",
+      "name": "连滑后完成计数 = 3",
+      "ok": true,
+      "detail": "4/10 | 第 1 / 452 组 | · | 已学 3 | · | 剩余 4512 | ax | n. | n. | vt. |  |  |  |  |  |  |  | . |  |  |  |  |  |  |  | . |  | "
+    },
+    {
+      "id": "C7-a",
+      "name": "每组 1 词：每张都是组内最后一张",
+      "ok": true,
+      "detail": "1/1 | 第 1 / 4515 组 | · | 已学 0 | · | 剩余 4515 | ad | n. | n. |  |  |  |  |  |  |  "
+    },
+    {
+      "id": "C7-b",
+      "name": "组内最后一张左滑 → 结算弹窗（不是空白 / 不是越界）",
+      "ok": true,
+      "detail": "dialog=true card=true"
+    },
+    {
+      "id": "D-m375-1",
+      "name": "底部「搜单词」搜索框已移除",
+      "ok": true,
+      "detail": "hasSearchBox=false"
+    },
+    {
+      "id": "D-m375-2",
+      "name": "「上一张 / 下一张」按钮已移除",
+      "ok": true,
+      "detail": "hasPrevNext=false"
+    },
+    {
+      "id": "D-m375-3",
+      "name": "保留显式的「重新学习」入口",
+      "ok": true,
+      "detail": "hasRestart=true"
+    },
+    {
+      "id": "D-m375-4",
+      "name": "滚到底后内容不被底部导航遮挡",
+      "ok": true,
+      "detail": "contentBottom=612 navTop=612"
+    },
+    {
+      "id": "D-m375-5",
+      "name": "页面高度 = 内容 + 导航，无多余空白（不强行撑第二屏）",
+      "ok": true,
+      "detail": "多余空白=0px"
+    },
+    {
+      "id": "D-m375-6",
+      "name": "首次进入有手势提示",
+      "ok": true,
+      "detail": "hint=\"左滑下一个单词 · 右滑上一个单词\""
+    },
+    {
+      "id": "D-m390-1",
+      "name": "底部「搜单词」搜索框已移除",
+      "ok": true,
+      "detail": "hasSearchBox=false"
+    },
+    {
+      "id": "D-m390-2",
+      "name": "「上一张 / 下一张」按钮已移除",
+      "ok": true,
+      "detail": "hasPrevNext=false"
+    },
+    {
+      "id": "D-m390-3",
+      "name": "保留显式的「重新学习」入口",
+      "ok": true,
+      "detail": "hasRestart=true"
+    },
+    {
+      "id": "D-m390-4",
+      "name": "滚到底后内容不被底部导航遮挡",
+      "ok": true,
+      "detail": "contentBottom=789 navTop=789"
+    },
+    {
+      "id": "D-m390-5",
+      "name": "页面高度 = 内容 + 导航，无多余空白（不强行撑第二屏）",
+      "ok": true,
+      "detail": "多余空白=0px"
+    },
+    {
+      "id": "D-m390-6",
+      "name": "首次进入有手势提示",
+      "ok": true,
+      "detail": "hint=\"左滑下一个单词 · 右滑上一个单词\""
+    },
+    {
+      "id": "D-pc1280-1",
+      "name": "底部「搜单词」搜索框已移除",
+      "ok": true,
+      "detail": "hasSearchBox=false"
+    },
+    {
+      "id": "D-pc1280-2",
+      "name": "「上一张 / 下一张」按钮已移除",
+      "ok": true,
+      "detail": "hasPrevNext=false"
+    },
+    {
+      "id": "D-pc1280-3",
+      "name": "保留显式的「重新学习」入口",
+      "ok": true,
+      "detail": "hasRestart=true"
+    },
+    {
+      "id": "D-pc1280-4",
+      "name": "内容区不被底部导航遮挡（桌面档无底栏）",
+      "ok": true,
+      "detail": "reachable=true bottomNav=false"
+    },
+    {
+      "id": "D-pc1280-5",
+      "name": "桌面档：外壳锁定视口高、无文档级多余空白（不强行撑第二屏）",
+      "ok": true,
+      "detail": "文档多余空白=0px"
+    },
+    {
+      "id": "D-pc1280-6",
+      "name": "首次进入有手势提示",
+      "ok": true,
+      "detail": "hint=\"左滑下一个单词 · 右滑上一个单词\""
+    },
+    {
+      "id": "D-pc-7",
+      "name": "PC 鼠标拖拽左滑 → 下一个词",
+      "ok": true,
+      "detail": "ad → as"
+    },
+    {
+      "id": "D-pc-8",
+      "name": "PC 键盘 ← → 上一个词",
+      "ok": true,
+      "detail": "as → ad"
+    },
+    {
+      "id": "D-pc-9",
+      "name": "PC 键盘 → → 下一个词",
+      "ok": true,
+      "detail": "ad → as"
+    },
+    {
+      "id": "D10-a",
+      "name": "长内容：页面可滚动（内容不被裁掉）",
+      "ok": true,
+      "detail": "scroll=949 inner=667"
+    },
+    {
+      "id": "D10-b",
+      "name": "卡片没有用 overflow:hidden 截断内容",
+      "ok": true,
+      "detail": "overflow=visible"
+    },
+    {
+      "id": "D10-c",
+      "name": "词源等长段落文字完整（非空、有结尾）",
+      "ok": true,
+      "detail": "末段 149 字"
+    },
+    {
+      "id": "E1",
+      "name": "已造出 v10 存量库（3 条生词本 + 1 份默写会话）",
+      "ok": true,
+      "detail": "IDB version=100（Dexie v10 = 100）"
+    },
+    {
+      "id": "E2",
+      "name": "App 打开后库升到 v11，且新增表已建立",
+      "ok": true,
+      "detail": "IDB version=110（Dexie v11 = 110）hasNewTable=true"
+    },
+    {
+      "id": "E3",
+      "name": "存量生词本数据一行没丢（3 条）",
+      "ok": true,
+      "detail": "vocab=3"
+    },
+    {
+      "id": "E4",
+      "name": "存量默写会话没丢（1 份）",
+      "ok": true,
+      "detail": "spellingSessions=1"
+    },
+    {
+      "id": "E5",
+      "name": "学习页在升级后的库上正常渲染（无页面异常）",
+      "ok": true,
+      "detail": "无异常"
+    },
+    {
+      "id": "E6",
+      "name": "升级后首进：已学过的 3 个词被跳过（落在第 4 个词）",
+      "ok": true,
+      "detail": "word=ax"
+    },
+    {
+      "id": "E7",
+      "name": "升级后会话已落库（1 份）",
+      "ok": true,
+      "detail": "sessions=1"
+    }
+  ],
+  "screenshots": [],
+  "finishedAt": "2026-11-01T13:19:44.677Z",
+  "failures": 0
+}

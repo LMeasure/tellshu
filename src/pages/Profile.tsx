@@ -29,6 +29,7 @@ import {
   getMonthlyStats,
   getStreakDays,
   getTotalReadingSeconds,
+  getTotalDictationSeconds,
   getLatestDiagnose,
   getRecitations,
   getTotalRecitationMs,
@@ -72,6 +73,7 @@ export function Profile() {
   const [months, setMonths] = useState<MonthlyStat[]>([])
   const [streak, setStreak] = useState(0)
   const [readingSec, setReadingSec] = useState(0)
+  const [dictSec, setDictSec] = useState(0)
   const [diagnose, setDiagnose] = useState<DiagnoseRow | null>(null)
   /** 背诵录音（阅读器里录的自动归档到这里） */
   const [recCount, setRecCount] = useState<number | null>(null)
@@ -103,14 +105,17 @@ export function Profile() {
         if (!alive) return
         setDays(d)
         setReadingSec(d.reduce((s, x) => s + x.readingSeconds, 0))
+        setDictSec(d.reduce((s, x) => s + (x.dictationSeconds ?? 0), 0))
       })
     } else if (range === 'year') {
       getMonthlyStats(12).then((m) => {
         if (alive) setMonths(m)
       })
       getTotalReadingSeconds().then((s) => alive && setReadingSec(s))
+      getTotalDictationSeconds().then((s) => alive && setDictSec(s))
     } else {
       getTotalReadingSeconds().then((s) => alive && setReadingSec(s))
+      getTotalDictationSeconds().then((s) => alive && setDictSec(s))
     }
     return () => {
       alive = false
@@ -262,6 +267,10 @@ export function Profile() {
               <Clock className="h-4 w-4" /> {range === 'total' ? '累计' : isMonthly ? '累计' : '区间'}阅读时长（含听书）
             </div>
             <div className="text-2xl font-bold">{fmtDuration(readingSec)}</div>
+            {/* 学习时间的「默写」子分支：记忆模式计时器累计，未累计过时不冒充 0 以外的数字 */}
+            <div className="mt-1 text-xs text-muted-foreground">
+              其中默写 {fmtDuration(dictSec)}
+            </div>
           </div>
         </CardBody>
       </Card>

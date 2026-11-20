@@ -1,0 +1,116 @@
+# =============================================================================
+# Stage B.5 · 30 本冻结数据集统一查询集
+#
+# 格式：<query>\t<期望命中书名>\t<类别>\t<锚点>
+#
+# 类别：
+#   fixed    Stage 1 固定 6 条，原文一字不改，用于跨阶段比较
+#   stage2   Stage 2 新增定向 Query（N1–N8），原文一字不改
+#   b5       Stage B.5 新增定向 Query，锚点必须经 verify-b5-anchors.py 实测核实
+#   probe    front matter / 过滤行为探针，**不计入命中率分母**
+#   control  负对照（与语料无关的 Query），**不计入命中率分母**
+#
+# 命中判定：期望书名是否出现在 Top-K 的书名中（大小写不敏感、子串匹配）。
+# 分母口径：
+#   过滤关闭 = 全部 fixed/stage2/b5 条数
+#   过滤开启 = 上述条数 − 「期望书名在库中没有任何 chapter_title IS NOT NULL 的块」的条数
+#              （由脚本按库内实测自动判定，不写死在文件里）
+# =============================================================================
+
+# ---------- Stage 1 固定 6 条（A-1~A-3 / B-1~B-3，原文不动） ----------
+拉斯柯尔尼科夫为了证明自己的理论而杀人，之后饱受良心折磨	Crime and Punishment	fixed	Raskolnikov
+一个家庭教师被雇去照顾一个孩子，住在阴森的大宅里	Jane Eyre	fixed	governess
+关于爱情与阶级的英文小说	Pride and Prejudice	fixed	-
+Odysseus returns home and takes revenge on the suitors	The Odyssey	fixed	Odysseus
+two young lovers from feuding families die tragically	Romeo and Juliet	fixed	-
+a governess hired to teach a girl at a gloomy mansion called Thornfield	Jane Eyre	fixed	Thornfield
+
+# ---------- Stage 2 新增 8 条（N1–N8，原文不动） ----------
+一个孤儿女孩在慈善学校忍饥挨冻，后来到一座大宅里做家庭教师	Jane Eyre	stage2	Lowood
+一位孤女被亲戚囚禁在阴森的古堡里，接连遭遇恐怖事件	The Mysteries of Udolpho	stage2	Udolpho
+斯威尼·托德在舰队街的理发店里接待客人	The String of Pearls	stage2	Sweeney
+拉斯柯尔尼科夫向索尼娅坦白自己杀了人	Crime and Punishment	stage2	Sonia
+a young Englishwoman travels to Italy and must choose between propriety and her own heart	A Room with a View	stage2	Cecil
+a man returns after many years to find his home occupied by those who presume him dead	The Odyssey	stage2	Ithaca
+Mr Darcy and the grand estate of Pemberley	Pride and Prejudice	stage2	Pemberley
+a masked ball in Verona where two young people first meet	Romeo and Juliet	stage2	Verona
+
+# ---------- 存量 10 本补充（B5-C01 ~ B5-C06） ----------
+# 2465 Carmen
+一个吉普赛女郎与士兵相爱又背叛，最终在斗牛场外被刺死	Carmen	b5	Carmen
+# 1695 The Man Who Was Thursday
+一位诗人被秘密招募进无政府主义组织，却发现同伴全是卧底警察	The Man Who Was Thursday	b5	Syme
+# 1260 Jane Eyre（第二条）
+阁楼上的疯女人与一场被隐瞒的婚姻	Jane Eyre	b5	Bertha
+# 1342 Pride and Prejudice（第二条）
+一位母亲急于把五个女儿嫁入体面人家	Pride and Prejudice	b5	Bennet
+# 2554 Crime and Punishment（第二条）
+一个穷大学生在彼得堡的阁楼里反复盘算自己是否该动手	Crime and Punishment	b5	Marmeladov
+# 1513 Romeo and Juliet（第二条）
+一对恋人因一封没送到的信而双双赴死	Romeo and Juliet	b5	Friar
+
+# ---------- Stage C 18 本（B5-N01 ~ B5-N24） ----------
+# 11 Alice's Adventures in Wonderland
+一个女孩跟着兔子掉进洞里，遇到一只会咧嘴笑的猫和一场荒诞的茶会	Alice's Adventures in Wonderland	b5	Cheshire
+一个女孩喝下药水后身体不断变化，在一场槌球赛上和扑克牌王后吵架	Alice's Adventures in Wonderland	b5	Hatter
+# 43 The strange case of Dr. Jekyll and Mr. Hyde（全库无章节块 → 过滤开启口径下自动出局）
+一位医生配制药剂让自己变成另一个人格，夜里在城里行恶	The strange case of Dr. Jekyll and Mr. Hyde	b5	Hyde
+# 72 Thuvia, maid of Mars
+一位火星公主与来自地球的剑客在异星荒野上并肩突围	Thuvia, maid of Mars	b5	Thuvia
+一个来自地球的冒险者被传送到一颗陌生的星球	Thuvia, maid of Mars	b5	Barsoom
+# 145 Middlemarch
+一位怀抱理想的年轻女子嫁给一位年迈的学者，婚后日渐失望	Middlemarch	b5	Dorothea
+一座英国小镇里，一位年轻医生的新婚与事业同时崩塌	Middlemarch	b5	Lydgate
+# 345 Dracula
+一位英国律师前往东欧处理房产，夜里的主人从不进食	Dracula	b5	Transylvania
+一位年轻女子夜里梦游，颈部出现两个奇怪的伤口	Dracula	b5	Renfield
+# 468 Manon Lescaut（无章节块）
+一位年轻贵族为一名女子倾家荡产，最终随她流放海外	Manon Lescaut	b5	Manon
+# 601 The Monk
+一位备受敬仰的修道士一步步堕落，把欲望藏进修道院的地牢	The Monk: A Romance	b5	Ambrosio
+# 2701 Moby Dick
+一位船长带着船员追捕一头白色巨鲸，只为复仇	Moby Dick	b5	Ahab
+一艘捕鲸船从新贝德福德出发，甲板上钉着一枚金币	Moby Dick	b5	Queequeg
+# 2868 The Green Mummy
+一具被诅咒的绿色木乃伊引出一连串离奇死亡	The Green Mummy	b5	mummy
+# 3011 The Lady of the Lake（无章节块）
+一位苏格兰高地首领与国王在湖畔的少女之间周旋	The Lady of the Lake	b5	-
+# 3296 The Confessions of St. Augustine
+一位青年与挚友在花园里听到孩童的歌声，从此彻底改变信仰	The Confessions of St. Augustine	b5	Alypius
+一个年轻人偷梨不是为了吃，而是为了偷本身	The Confessions of St. Augustine	b5	-
+# 6133 Arsène Lupin
+一位绅士大盗在火车上盗走贵族的宝物，还留下名片	The Extraordinary Adventures of Arsène Lupin	b5	Arsène
+一位警探屡次布下陷阱，却总被对手先一步溜走	The Extraordinary Adventures of Arsène Lupin	b5	Ganimard
+# 21839 Sense and Sensibility
+一对姐妹一个克制一个热烈，各自在爱情里受挫	Sense and Sensibility	b5	Marianne
+一位长女默默承受心上人已订婚的消息	Sense and Sensibility	b5	Elinor
+# 34413 The Love Letters of Mary Wollstonecraft（无章节块）
+一位女作家写给情人却被对方冷淡以对的书信	The Love Letters of Mary Wollstonecraft	b5	Imlay
+# 2680 Meditations（无章节块）
+一位罗马皇帝写给自己的道德自省札记	Meditations	b5	-
+# 59828 The String of Pearls（无章节块，Stage 2 的 N3 已覆盖，此处不重复计入）
+# 67979 The Blue Castle
+一位被家人当作老姑娘使唤的女性，在得知自己时日无多后离家出走	The Blue Castle	b5	Valancy
+一位女性搬进一间破屋，第一次按自己的意愿生活	The Blue Castle	b5	Barney
+# 75201 A farewell to arms
+一名救护车司机在战场上爱上一名护士，最终逃离军队	A farewell to arms	b5	Catherine
+一对恋人在雨夜里划船逃往中立国	A farewell to arms	b5	-
+# 76639 Eloisa
+一位贵族少女爱上自己的家庭教师，被父亲逼迫另嫁他人	Eloisa	b5	Wolmar
+一位女子在丈夫的湖畔庄园里过着按理性安排的生活，却始终忘不了旧情人	Eloisa	b5	Clarens
+
+# ---------- 补入的 1661 / 564（B5-P01 ~ B5-P04） ----------
+# 1661 The Adventures of Sherlock Holmes
+一位侦探只凭帽子和烟灰就能说出陌生人的来历	The Adventures of Sherlock Holmes	b5	Sherlock
+一位退伍军医租下同栋公寓，开始记录室友破案的过程	The Adventures of Sherlock Holmes	b5	Watson
+# 564 The Mystery of Edwin Drood
+一座英国大教堂城里的年轻工程师失踪，叔父神情异常	The Mystery of Edwin Drood	b5	Jasper
+一对自幼订婚的年轻人决定解除婚约，却在风暴之夜前后失联	The Mystery of Edwin Drood	b5	Drood
+
+# ---------- front matter / 过滤行为探针 2 条（F1 / F2，不计入分母） ----------
+This eBook is for the use of anyone anywhere at no cost and with almost no restrictions whatsoever	(行为探针·不计入分母)	probe	-
+Gutenberg	(行为探针·不计入分母)	probe	-
+
+# ---------- 负对照 2 条（不计入分母） ----------
+量子计算与区块链在供应链金融中的应用	(负对照·不计入分母)	control	-
+如何用 Python 爬取动态渲染的网页	(负对照·不计入分母)	control	-

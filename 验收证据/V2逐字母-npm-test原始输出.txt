@@ -1,0 +1,2266 @@
+
+> shushu-app@0.0.0 test
+> tsx scripts/test_features.ts && tsx scripts/test_data_client.ts && tsx scripts/test_storage.ts && tsx scripts/test_services.ts && tsx scripts/test_learning_loop.ts && tsx scripts/test_readings.ts && tsx scripts/test_review_quiz.ts && tsx scripts/test_bilingual.ts && tsx scripts/test_reader_v2.ts && tsx scripts/test_fitpaging.ts && tsx scripts/test_word_detail.ts && tsx scripts/test_sync.ts && tsx scripts/test_convert.ts && tsx scripts/test_transcript.ts && tsx scripts/test_transcript_store.ts && tsx scripts/test_study_note_generate.ts && tsx scripts/test_study_note_dict.ts && tsx scripts/test_irregular.ts && tsx scripts/test_vocab_senses.ts && tsx scripts/test_discover.ts && tsx scripts/test_spelling.ts && tsx scripts/test_spelling_session.ts && tsx scripts/test_spelling_migration.ts && tsx scripts/test_bookschema_migration.ts && tsx scripts/test_spelling_srs_handoff.ts && tsx scripts/test_spelling_ui.ts && tsx scripts/test_word_learning.ts && tsx scripts/test_word_card.ts && tsx scripts/test_spelling_reliability.ts && tsx scripts/test_spelling_v2_stats.ts && tsx scripts/test_spelling_u16_recovery.ts && tsx scripts/test_spelling_v2_typing.ts && tsx scripts/test_spelling_result_stats.ts
+
+[dictation] 默写比对（标红逻辑）
+  ✓ 原文词数=6（实际 6）
+  ✓ 正确词数=5（实际 5）
+  ✓ 恰好 1 个词标红
+  ✓ 命中率=83%
+  ✓ 完全一致命中率=100（实际 100）
+  ✓ 归一化小写去标点
+[epub.htmlToText] 去标签提取
+  ✓ 提取正文文本
+  ✓ 移除 script
+  ✓ 保留段落换行
+[grammar] 语法分析（compromise）
+  ✓ 逐词分析=5 词
+  ✓ 时态=完成时（实际 完成时）
+  ✓ 句型=陈述句
+   词性示例: she/名词 has/动词 eaten/动词 the/限定词 cake/名词
+  ✓ 疑问句识别（实际 疑问句）
+[diagnostic] 诊断抽题（真实词条形状 → 梯度出题）
+  ✓ L1 档=短词/单词素 30 个（实际 30）
+  ✓ L2 档=中长词 30 个（实际 30）
+  ✓ L3 档=长词/多语素 30 个（实际 30）
+  ✓ 生成 5 题（实际 5）
+  ✓ 梯度为 L1×2 / L2×2 / L3×1
+  ✓ 每题 4 个互不相同的选项
+  ✓ 正确答案都在选项里
+  ✓ 词量不足时不硬凑题目
+  ✓ L1 题干取自短词档
+  ✓ L3 题干取自长词档
+[diagnostic] 诊断定级
+  ✓ 全对 → 进阶级（实际 3）
+  ✓ 全对 → 建议 CET6
+  ✓ L3 失手 → 基础级（实际 2）
+  ✓ 基础题失手 → 起步级（实际 1）
+  ✓ 低分级 → 建议 CET4
+[search] 全词库搜索（排序 + 多词本归并）
+  ✓ 前缀命中排最前（实际 continue）
+  ✓ 词内包含排在词首前缀之后
+  ✓ 支持按中文释义搜索
+  ✓ continent 命中
+  ✓ 同一单词只出现一条（已归并）
+  ✓ 归并 3 个词本（实际 3）
+  ✓ 主词本取首个命中
+  ✓ limit 生效
+  ✓ 空查询返回空
+[paging] 分页与目录跳转
+  ✓ 空输入 → 0 页
+  ✓ 总长未超预算 → 合为 1 页
+  ✓ 超预算 → 多页（实际 5 页）
+  ✓ 分页不丢段落、不重复
+  ✓ 页区间连续无缝
+  ✓ 单段超长时独占一页（不切句）
+  ✓ 段落下标 → 正确页号
+  ✓ 段落下标越界 → 末页
+  ✓ 页码越界收敛
+  ✓ 无存档页码 → 第 1 页
+[epub] TXT 章节识别
+  ✓ 识别 3 章（实际 3）
+  ✓ 章节标题取自原文
+  ✓ 第 2 章起始段落下标=2（实际 2）
+  ✓ 正文段落完整保留
+  ✓ 无章节标记 → 不虚构目录
+[masking] 分词
+  ✓ 英文词识别为 word
+  ✓ 标点单独成 token 且非 word
+  ✓ 带撇号的缩写保留为一个词
+  ✓ 切词后拼回原文无损
+[masking] 随机隐藏比例
+  ✓ 比例越大空位越多（70 < 131 < 191 < 276 < 359）
+  ✓ 45% 实际命中 47.8%（允许抽样误差）
+  ✓ 空位 key 形如 段下标:token下标
+  ✓ 90% 隐藏落在 320~400 之间（实际 359）
+[masking] 随机可复现 + 换一批
+  ✓ 同 seed 结果完全一致（输入时空位不跳动）
+  ✓ 换一批（seed+1）得到不同空位
+  ✓ 每段至少一个空位（防止整段不用写）
+  ✓ 确定性伪随机同种子同值
+[masking] 完全隐藏
+  ✓ 不含标点：只隐藏 34 个词
+  ✓ 含标点：词 + 标点共 40 个
+  ✓ 空格永不作为默写空位
+[masking] 自主选择
+  ✓ 只隐藏用户勾选的 2 处（实际 2）
+  ✓ 勾选位置精确命中
+  ✓ 未勾选位置保持可见
+  ✓ 未选任何词 → 不隐藏（可纯阅读）
+  ✓ 默认随机隐藏
+  ✓ 默认比例 30%
+[masking] 输入实时校验
+  ✓ 未输入 → empty
+  ✓ 前缀正确 → typing（不标红）
+  ✓ 大小写不敏感
+  ✓ 完全匹配 → ok
+  ✓ 打错字母 → wrong（实时标红）
+  ✓ 多打字母 → wrong
+  ✓ 单词只有一个字母时边界正确
+[masking] 统计
+  ✓ 空位总数 4（实际 4）
+  ✓ 已填 3（实际 3）
+  ✓ 正确 1 / 错误 1（实际 1/1）
+  ✓ 正确率 33%（实际 33）
+  ✓ 无空位时正确率 0（不除零）
+  ✓ 未填写不计入已填
+[masking] 空位答案表
+  ✓ 答案表长度 = 隐藏词数（34）
+  ✓ 首个空位答案是 It（实际 It）
+  ✓ 答案表携带可定位 key
+[e2e] 默写流水线：书籍 / 粘贴文本走同一条链路
+  ✓ 短文落在一页（实际 1）
+  ✓ 生成 11 个空位
+  ✓ 每个空位都能回指原文位置（就地渲染不串行）
+  ✓ 逐字校验：错 1 处、其余正确
+  ✓ 正确率 91%（未满分即为标红生效）
+  ✓ 存档 key 唯一（页:段:token，翻页不互相覆盖）
+  ✓ 存档 key 形如 页:段:token
+[audioBus] 分句
+  ✓ 两句按句末标点切开
+  ✓ 缩写点（Mr.）不切断句子
+  ✓ 纯空白 → 无句子
+  ✓ 无句末标点 → 整段算一句
+  ✓ 连续短句切 3 段
+  ✓ 人名缩写点不切断句子
+  ✓ 中文句末标点同样生效
+[audioBus] 抢占仲裁：听书 ↔ 单词
+  ✓ 初始无人占用
+  ✓ 听书开始 → 焦点在 book
+  ✓ 点单词 → 听书挂起（book:suspend）
+  ✓ 焦点切到 word
+  ✓ book 进挂起栈
+  ✓ 单词念完 → 恢复 book（实际 book）
+  ✓ 听书被恢复
+  ✓ 栈已清空
+[audioBus] 三层嵌套：听书 → 音频 → 单词
+  ✓ 两个旧音源都在栈里
+  ✓ 单词播完 → 先恢复音频（最近挂起的）
+  ✓ 音频播完 → 再恢复听书
+  ✓ 时序正确：book:suspend → media:suspend → media:resume → book:resume
+[audioBus] 边界
+  ✓ 重复 claim 同一持有者不会把自己挂起
+  ✓ release 后无人占用
+  ✓ reset 清空全部（兜底防静音）
+[listenSession] 抢占后从当前句重读
+  ✓ 从第 1 句开始（实际 A）
+  ✓ 自然读完推进到下一句（实际 A,B）
+  ✓ 抢占期间不新增朗读
+  ✓ 下标仍停在被打断的第 2 句（实际 1）
+  ✓ 恢复后从当前句开头重读（实际 A,B,B）
+  ✓ 读完全部（实际 A,B,B,C）
+  ✓ 读完触发 onEnd（页面据此复位听书按钮）
+  ✓ 逐句回调下标用于句子高亮
+[listenSession] 点击某句 → 从该句开始重读
+  ✓ 正常从第 1 句开始（实际 A）
+  ✓ 下标跳到第 3 句（实际 2）
+  ✓ 从第 3 句重读（实际 A,C）
+  ✓ 高亮回调最终落在第 3 句（实际 0,2）
+[recorder] 录音命名
+  ✓ 0 → 00:00
+  ✓ 83 秒 → 01:23
+  ✓ 599 秒 → 09:59
+  ✓ 负数收敛为 00:00
+  ✓ 标题=日期-时长（实际 2026-10-02-01:23）
+  ✓ 自动命名格式符合 年-月-日-时长
+
+功能单测全部通过 ✓
+[dataClient] 基址解析
+  ✓ 默认同源回退（实际 /data/linguabase/v1/）
+  ✓ 运行期覆盖并补尾斜杠（实际 https://data.shushu.app/linguabase/v1/）
+  ✓ 相对路径拼到外部存储（实际 https://data.shushu.app/linguabase/v1/bank/L1.json）
+[dataClient] 路径拼接与安全防护
+  ✓ 默认数据版本为 v1（实际 v1）—— 版本写进路径，可灰度可回滚
+  ✓ 普通相对路径带版本号（实际 /data/linguabase/v1/index.json）
+  ✓ 前导 / 会被去掉，不产生双斜杠
+  ✓ 含 .. 的路径直接抛错（防目录穿越）
+[dataClient] 缓存与重试
+  ✓ 成功返回真实数据
+  ✓ 成功结果被复用，只发 1 次请求（实际 1）
+  ✓ 404 返回 fallback（空数组，不编造）
+  ✓ 404 不重试，只发 1 次（实际 1）
+  ✓ 失败结果不入缓存，下次会重新尝试
+  ✓ 5xx 重试耗尽后返回 fallback
+  ✓ 5xx 共发 2 次（首试 + 1 次重试，实际 2）
+[dataClient] LRU 有界
+  ✓ 缓存条目被限制在上限内（实际 48 ≤ 48）
+  ✓ 连续 60 次请求后缓存为 48（实际 48）
+
+dataClient 单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+[storage] driver 选择
+  ✓ 无 indexedDB 时选中内存实现（实际 memory）
+  ✓ isStorageEphemeral 标记为 true，设置页可据此提示
+[storage] 基础 CRUD
+  ✓ put / get 往返
+  ✓ count 正确
+  ✓ put 同主键为覆盖写
+  ✓ toArray 返回 2 行（实际 2）
+  ✓ delete 生效
+[storage] 批量读写
+  ✓ bulkPut 写入 3 行
+  ✓ bulkGet 保序返回，缺失位为 undefined
+[storage] 自增主键表
+  ✓ 自增主键从 1 开始递增（实际 1, 2）
+  ✓ 自增表 2 行
+[storage] 索引查询与防误用
+  ✓ whereIndex('layer') 命中 2 行（实际 2）
+  ✓ 未建索引字段查询被显式拒绝（不静默全表扫）
+[storage] 领域逻辑跑在内存实现上
+  ✓ addToVocab 落到 new 层
+  ✓ 连续答对 5 次 → apply（实际 apply=1）
+[storage] clearAll
+  ✓ vocab 已清空
+  ✓ reviewLog 已清空
+[storage] 带 Blob 的行（背诵录音）
+  ✓ Blob 字段读写往返
+  ✓ whereIndex(doc_id) 命中
+
+存储服务单测全部通过 ✓
+[speech] Node 环境降级
+  ✓ 无 Web Speech API 时选中空实现（实际 none）
+  ✓ isSpeechSupported() 返回 false
+  ✓ isRecognitionSupported() 返回 false
+  ✓ speak() 返回 false，不抛错
+  ✓ listen() 在不支持时 reject（调用方得以提示用户）
+[speech] speakAsync 语义
+  ✓ speakAsync 记录了一次朗读（resolve 而非 reject）
+  ✓ slow=true → 0.6 倍速（实际 0.6）
+  ✓ rate 被收敛到上限 4
+  ✓ cancel() 透传到实现
+[speech] speakFocused 走 audioBus 但不发声
+  ✓ 不支持时 speakFocused 返回 false（按钮状态据此显示）
+[listenSession] 无真实语音也能跑完（noop 下 resolve）
+  ✓ 三句依次读完并触发 onEnd
+[recording] Node 环境降级
+  ✓ 无 MediaRecorder 时选中空实现（实际 none）
+  ✓ isRecordingSupported() 返回 false
+  ✓ 会话默认未在录音
+  ✓ start() 明确 reject，不静默成功
+  ✓ cancel/dispose 在不支持时是安全的空操作
+[recorder] 纯展示函数
+  ✓ fmtDuration 正确
+  ✓ fmtSize(0) → —
+  ✓ fmtSize 字节
+  ✓ fmtSize KB
+  ✓ fmtSize MB
+  ✓ recitationTitle 年-月-日-时长
+[speech] 跟读评分纯逻辑
+  ✓ 归一化去标点、小写
+  ✓ 完全一致 → 100
+  ✓ 空输入 → 0
+  ✓ 近音得到中间分（实际 80）
+
+Service 层单测全部通过 ✓
+✅ addToVocab → new 层
+✅ SRS 排程：10 分钟后到点
+✅ 连续对 5 次：new → apply
+✅ 连续对 10 次：apply → mastered
+✅ mastered 不再进入复习队列
+✅ 答错：清零 + 错题本回流
+✅ 统计：new=1, mastered=1, wrong=1, total=2
+✅ getVocabByLayer + getWrongPool 正确
+
+🎉 学习闭环本地逻辑测试全部通过
+✅ saveReading（文本）→ 词数统计正确
+✅ getReadings 倒序返回 2 篇
+✅ getReading 命中
+✅ updateReadingProgress 写入滚动位置
+✅ addReadingTime 当日/跨日累计正确
+✅ deleteReading 生效
+
+🎉 导入/阅读数据层测试全部通过
+复习组题单测（含离线场景）
+
+【基础】shuffle
+  ✓ 不丢失元素
+  ✓ 不修改入参
+  ✓ 空数组安全
+
+【核心】词本完全取不到（离线且未缓存）
+  ✓ 仍能组出题目  组出 4/4
+  ✓ 没有被丢弃的词
+  ✓ 正确答案取自已持久化的释义  correct=vt. 抛弃；放弃
+  ✓ 每题 4 个选项（1 正确 + 3 干扰）
+  ✓ 干扰项都来自其他到期词且不重复
+
+【边界】只有 1 个到期词 + 词本取不到
+  ✓ 组不出题（孤零零一个选项）
+  ✓ 如实上报原因，而非静默返回空  dropped=[{"word":"abandon","reason":"too-few-options"}]
+
+【联网】词本可用时
+  ✓ 全部成题
+  ✓ 每题有 4 个选项
+  ✓ 正确答案仍优先用持久化释义
+
+【边界】入库时没带释义
+  ✓ 无释义的词被丢弃  dropped=[{"word":"mystery","reason":"no-meaning"}]
+  ✓ 其余词正常成题
+
+【边界】入库没释义，但词本能补
+  ✓ 能从词本补到释义并成题  correct=n. 孤儿
+  ✓ 总体无丢弃  []
+
+【边界】空输入
+  ✓ 空到期列表不抛异常
+
+通过 18 / 共 18
+✅ 复习组题单测全部通过
+[textLang] 字符占比统计
+  ✓ 纯英文：中文字符数 0（实际 0，期望 0）
+  ✓ 纯英文：英文字母数 10（Hello+world）（实际 10，期望 10）
+  ✓ 纯中文：中文字符数 10（实际 10，期望 10）
+  ✓ 纯中文：英文字母数 0（实际 0，期望 0）
+  ✓ 空串：有效字符 0（不能除零）（实际 0，期望 0）
+[textLang] 语言类型判定（>80% 才算纯某一种）
+  ✓ 纯英文 → en（实际 "en"，期望 "en"）
+  ✓ 纯中文 → zh（实际 "zh"，期望 "zh"）
+  ✓ 无任何中英文字母 → 沿用英文路径（不回归）（实际 "en"，期望 "en"）
+  ✓ 中英混排 → mixed（实际 "mixed"，期望 "mixed"）
+  ✓ 中文占比 ≈83% 仍判 zh（阈值 >80%）（实际 "zh"，期望 "zh"）
+  ✓ 中文占比 0.800 ≤ 0.8 → 该样例应为 mixed
+  ✓ 中文占比 80% 整 → mixed（严格大于才算纯）（实际 "mixed"，期望 "mixed"）
+[textLang] 占优语言与标签
+  ✓ apple → en（实际 "en"，期望 "en"）
+  ✓ apple 的字母数比汉字多 → en（混排按占优方）（实际 "en"，期望 "en"）
+  ✓ 汉字远多于字母 → zh（实际 "zh"，期望 "zh"）
+  ✓ 英文字符更多 → en（实际 "en"，期望 "en"）
+  ✓ 无字母时兜底 en（实际 "en"，期望 "en"）
+  ✓ 中文 → zh-CN（实际 "zh-CN"，期望 "zh-CN"）
+  ✓ 英文 → en-US（实际 "en-US"，期望 "en-US"）
+[textLang] 语言片段切分
+  ✓ 汉字 → zh（实际 "zh"，期望 "zh"）
+  ✓ 中文句号属于中文片段（避免中英来回抖动）（实际 "zh"，期望 "zh"）
+  ✓ 字母 → latin（实际 "latin"，期望 "latin"）
+  ✓ 切成 3 段（实际 3）
+  ✓ 第 1 段是中文（实际 "zh"，期望 "zh"）
+  ✓ 第 2 段是英文（实际 "latin"，期望 "latin"）
+  ✓ 第 3 段回到中文（实际 "zh"，期望 "zh"）
+  ✓ 中英之间的空白吸附到相邻的英文片段（实际 " apple "，期望 " apple "）
+  ✓ 所有片段拼回 == 原文（不吞字符、不重复）
+[masking] 英文分词行为必须与改造前一致
+  ✓ 英文 word token 数为 4（实际 4）
+  ✓ 第一个词 token 是 Hello（实际 "Hello"，期望 "Hello"）
+  ✓ , 不是词
+  ✓ 带撇号的复合词保持完整（实际 "It's"，期望 "It's"）
+  ✓ auto 模式对纯英文的结果与显式 en 完全相同（零回归）（实际 "[{\"t\":\"Hello\",\"word\":true},{\"t\":\",\",\"word\":false},{\"t\":\" \",\"word\":false},{\"t\":\"world\",\"word\":true},{\"t\":\"!\",\"word\":false},{\"t\":\"  \",\"word\":false},{\"t\":\"It's\",\"word\":true},{\"t\":\" \",\"word\":false},{\"t\":\"fine\",\"word\":true},{\"t\":\".\",\"word\":false}]"，期望 "[{\"t\":\"Hello\",\"word\":true},{\"t\":\",\",\"word\":false},{\"t\":\" \",\"word\":false},{\"t\":\"world\",\"word\":true},{\"t\":\"!\",\"word\":false},{\"t\":\"  \",\"word\":false},{\"t\":\"It's\",\"word\":true},{\"t\":\" \",\"word\":false},{\"t\":\"fine\",\"word\":true},{\"t\":\".\",\"word\":false}]"）
+  ✓ 空串 → 空数组（实际 "[]"，期望 "[]"）
+[speechText] 花括号与元信息
+  ✓ 去掉 {...} 及其内容（实际 "predict  means say."，期望 "predict  means say."）
+  ✓ 嵌套花括号也被清掉（实际 ""，期望 ""）
+  ✓ 没闭合的左花括号只删符号、保留内容（实际 "un结 c"，期望 "un结 c"）
+  ✓ 无花括号原样返回（实际 "plain text"，期望 "plain text"）
+[speechText] 缩写展开
+  ✓ e.g. → for example（实际 "Fruits, for example apples."，期望 "Fruits, for example apples."）
+  ✓ i.e. → that is（实际 "It is cold, that is frozen."，期望 "It is cold, that is frozen."）
+  ✓ etc. → and so on（句末点保留）（实际 "apples, oranges, and so on."，期望 "apples, oranges, and so on."）
+  ✓ 称谓一并展开（实际 "Mister Smith versus Doctor Jones"，期望 "Mister Smith versus Doctor Jones"）
+  ✓ 普通文本不变（实际 "no abbreviation here"，期望 "no abbreviation here"）
+[speechText] 词根拆解符号
+  ✓ 词根记号 → 逗号清单（实际 "un, pre, dict, able"，期望 "un, pre, dict, able"）
+  ✓ 不含加号时原样返回（实际 "predict"，期望 "predict"）
+  ✓ 普通连字符单词不会被拆开（关键：不加号不处理）（实际 "well-known"，期望 "well-known"）
+  ✓ 多段连字符同样不动（实际 "mother-in-law"，期望 "mother-in-law"）
+[speechText] 中文标点 → 英文标点
+  ✓ 逗号句号换成英文并留空格（实际 "你好, 世界. "，期望 "你好, 世界. "）
+  ✓ 中文引号转英文引号（实际 " \"引号\" "，期望 " \"引号\" "）
+  ✓ 省略号转三个点（实际 "Wait..."，期望 "Wait..."）
+[speechText] 完整清洗
+  ✓ 英文句：花括号 + 缩写 + 中文标点全部处理（实际 "This is a test, for example apples and more."，期望 "This is a test, for example apples and more."）
+  ✓ 中文句：**保留**中文标点（不用英文标点念中文）（实际 "今天天气很好，我们去散步吧。"，期望 "今天天气很好，我们去散步吧。"）
+  ✓ 词根记号整句清洗（实际 "un, pre, dict, able"，期望 "un, pre, dict, able"）
+  ✓ 多余空白被压缩（实际 "spaced out"，期望 "spaced out"）
+[masking] 中文分词
+  ✓ 中文切出至少 4 个词级单位（实际 5：今天/我们/学习/中文/分词）
+  ✓ 中文标点不会被当成词
+  ✓ 句号成为独立的非词 token
+  ✓ 所有 token 拼回 == 原文（不含隐形丢字）（实际 "今天我们学习中文分词。"，期望 "今天我们学习中文分词。"）
+[masking] 逐字降级（模拟没有 Intl.Segmenter 的环境）
+  ✓ 逐字降级时每个汉字都是一个可隐藏单位（实际 4，期望 4）
+  ✓ 逐字降级同样不丢字符（实际 "学习由於"，期望 "学习由於"）
+  ✓ 逐字降级把「你好世界」切成 4 个单字
+  ✓ 逐字降级里标点不是可隐藏单位
+  ✓ 连续标点归成一个非词 token（不拆成一串空位）（实际 1，期望 1）
+[masking] 中英混排分词
+  ✓ 英文单词被独立切出（实际 今天/我们/学习/apple/这个/单词）
+  ✓ 中文词组也正常切出
+  ✓ 不会出现「中文+英文」粘在一起的 token
+  ✓ 混排 token 拼回 == 原文（实际 "今天我们学习 apple 这个单词"，期望 "今天我们学习 apple 这个单词"）
+[masking] 中文掩码计划
+  ✓ 标点「。」在「不含标点」模式下不隐藏
+  ✓ 标点「。」在「不含标点」模式下不隐藏
+  ✓ 样例里确实存在中文标点（2 个）
+  ✓ 「含标点」模式下中文句号也被纳入默写
+  ✓ 同 seed 结果可复现（输入时空位不跳动）（实际 "[\"0:0\",\"0:1\",\"0:3\",\"0:4\",\"1:0\",\"1:1\",\"1:2\",\"1:3\"]"，期望 "[\"0:0\",\"0:1\",\"0:3\",\"0:4\",\"1:0\",\"1:1\",\"1:2\",\"1:3\"]"）
+[masking] 中文字符匹配核验
+  ✓ 完全隐藏能收集到 9 个空位
+  ✓ 未输入 → empty（实际 "empty"，期望 "empty"）
+  ✓ 输入首字 → 在正确的路上（实际 "typing"，期望 "typing"）
+  ✓ 完整一致 → ok（实际 "ok"，期望 "ok"）
+  ✓ 多打 → wrong（实际 "wrong"，期望 "wrong"）
+  ✓ 写错字立刻标红（字符匹配）（实际 "wrong"，期望 "wrong"）
+  ✓ 统计含未填空位：总数 4（实际 4，期望 4）
+  ✓ 已填 3（实际 3，期望 3）
+  ✓ 正确 1（实际 1，期望 1）
+  ✓ 错误 1（实际 1，期望 1）
+  ✓ 正确率按已填算 1/3（实际 33，期望 33）
+[audioBus] 分句：英文
+  ✓ 英文 . ? 切成 2 句（实际 2，期望 2）
+  ✓ 连续短句切 3 段（实际 3，期望 3）
+  ✓ 缩写点不切断句子（实际 2，期望 2）
+[audioBus] 分句：中文
+  ✓ 中文句末标点生效（实际 2，期望 2）
+  ✓ 逗号不切句（只有。！？；才切）（实际 1，期望 1）
+  ✓ 连续中文短句切 3 段（实际 3，期望 3）
+[audioBus] 分句：中英混排按语言边界再切
+  ✓ 混排一句切成 3 句（实际 3：今天我们学习 | apple | 这个单词。）
+  ✓ 中间那一小块是纯英文（实际「apple」）
+  ✓ 第 1 句判为中文 → 用中文嗓
+  ✓ 第 2 句判为英文 → 用英文嗓
+  ✓ 不开 crossLanguage 时行为与改造前一致（1 句）（实际 1，期望 1）
+[voicePicker] 嗓音挑选
+  ✓ 联网时英文优先云端 en-US 嗓（实际 "Google US English"，期望 "Google US English"）
+  ✓ 断网时英文退回本地嗓（否则念不出来）（实际 "Windows David - English (United States)"，期望 "Windows David - English (United States)"）
+  ✓ 联网时中文优先云端中文嗓（实际 "Google 普通话（中国大陆）"，期望 "Google 普通话（中国大陆）"）
+  ✓ 断网时中文退回系统本地嗓（实际 "Microsoft Huihui - Chinese (Simplified)"，期望 "Microsoft Huihui - Chinese (Simplified)"）
+  ✓ 只有本地嗓时联网也照用（不能返回空让系统默认接手）（实际 "Local EN"，期望 "Local EN"）
+  ✓ 完全没有目标语言嗓音 → undefined（实际 undefined，期望 undefined）
+  ✓ 英文排序只保留英文嗓（实际 en-US,en-US,en-GB）
+  ✓ 语言内部先挑 en-US 再挑 en-GB
+[listenSession] 句间 200ms 停顿
+  ✓ 需求规定的停顿是 200ms（实际 200，期望 200）
+  ✓ 第 1 句立即开始朗读（实际 1，期望 1）
+  ✓ 停顿未满 200ms 时不抢读下一句（实际 1，期望 1）
+  ✓ 停顿结束后才开始第 2 句（实际 2，期望 2）
+  ✓ 第 2 句起点 236ms ≥ 200ms（确实停了）
+[listenSession] 停顿期间被抢占不被吞
+  ✓ 抢占期间停顿结束后也不继续往下读（实际 "A"，期望 "A"）
+  ✓ 恢复后才读下一句（实际 "AB"，期望 "AB"）
+[listenSession] 点击某句 → 从该句重读
+  ✓ 下标立刻跳到第 3 句（实际 2，期望 2）
+  ✓ 被打断的旧句不再续读，直接从第 3 句开始（实际 "AC"，期望 "AC"）
+
+中英文兼容单测全部通过 ✓
+[需求1] 英文单元标记 natural（不挑嗓音 / 不设 rate / pitch）
+  ✓ 英文段被切成 2 个单元
+  ✓ 所有英文单元都标记为 natural（走浏览器默认）
+  ✓ 英文单元语言标签为 en
+  ✓ 英文单元不带 rate / pitch（保持浏览器默认）
+  ✓ 英文句间呼吸固定 200ms，不套用中文标点规则
+[需求1] ListenSession 把 natural 透传给朗读实现
+  ✓ 第 1 句（英文）plan.natural = true（实际 true，期望 true）
+  ✓ natural 时不覆盖 rate（值不影响，实现侧不设置）（实际 1，期望 1）
+  ✓ 第 2 句（中文）plan.natural = false（实际 false，期望 false）
+  ✓ 中文单元沿用显式倍速（实际 1.2，期望 1.2）
+[需求1] web 实现：natural 早退必须在设置 rate 之前（源码断言）
+  ✓ web.ts 里有 natural 分支
+  ✓ natural 早退排在设置 rate 之前（否则倍速仍会被覆盖）
+  ✓ natural 早退排在指定 voice 之前（否则还是会挑嗓音）
+[需求2] 中文标点停顿档位
+  ✓ 「你好，世界。」切成 2 段（实际 2，期望 2）
+  ✓ 逗号后停 100ms（实际 100，期望 100）
+  ✓ 句号后停 150ms（实际 150，期望 150）
+  ✓ 普通陈述句 pitch 保持 1（实际 1，期望 1）
+  ✓ 感叹号后停 150ms（实际 150，期望 150）
+  ✓ 感叹句 pitch 升到 1.15（语气微调）（实际 1.15，期望 1.15）
+  ✓ 问号后停 150ms（实际 150，期望 150）
+  ✓ 问句不升调（只有感叹句做微调）（实际 1，期望 1）
+[需求2] 「-」等符号不读，直接跳过
+  ✓ 破折号被跳过（实际 "你好世界"，期望 "你好世界"）
+  ✓ 连字符 / 波浪号 / 星号被跳过（实际 "abcd"，期望 "abcd"）
+  ✓ 中文朗读文本里不残留破折号
+  ✓ 中文单元不走 natural（要挑中文嗓音 + 按倍速）
+  ✓ 中文单元带上了设置里的倍速（实际 1.5，期望 1.5）
+  ✓ 句末句号 → 150ms（实际 150，期望 150）
+[需求2] 中英混排各走各的
+  ✓ 混排里的英文片段走浏览器默认
+  ✓ 混排里的中文片段走中文嗓音 + 标点停顿
+[需求3] 横纵轴判定
+  ✓ 横向位移大 → 选词（实际 "x"，期望 "x"）
+  ✓ 纵向位移大 → 滚页面（实际 "y"，期望 "y"）
+  ✓ 位移没过阈值 → 还不能判定（实际 "none"，期望 "none"）
+  ✓ 刚好过阈值且横向更大 → 选词（实际 "x"，期望 "x"）
+  ✓ 横向才进入选词模式
+  ✓ 纵向不进入选词模式（留给页面滚动）
+  ✓ 未判定方向时也不选词
+[需求3] 一次拖拽内同一个词只切一次
+  ✓ 首次经过 → 切换（实际 true，期望 true）
+  ✓ 同一次拖拽再次经过 → 不重复切换（防闪烁）（实际 false，期望 false）
+  ✓ 换一个词 → 切换（实际 true，期望 true）
+  ✓ 命中 data-slot（实际 "0:3"，期望 "0:3"）
+  ✓ 空值视为未命中（实际 null，期望 null）
+  ✓ null 视为未命中（实际 null，期望 null）
+[需求3] 选择阶段保留「受保护的 onClick 兜底」
+  ✓ 可选词带 data-slot（滑动命中靠它）
+  ✓ 选择阶段保留 onClick 兜底（个别内核手势不生效时靠 click 选词）
+  ✓ onClick 兜底走 toggleGuarded 同键去重（防止合成 mousedown/click 双切）
+  ✓ 组件用 lastToggleAtRef 记录最近切换的 { 词, 时刻 } 供去重
+  ✓ 注册了 touchmove（滑动选词）
+  ✓ touchmove 用 passive:false（横向选词要吃掉滚动）
+[需求4] 暂停 → 记住句子下标 → 恢复从该句重读
+  ✓ 第 1 句开始朗读（实际 "A"，期望 "A"）
+  ✓ 第 2 句开始朗读（实际 "AB"，期望 "AB"）
+  ✓ 暂停后会话处于 paused
+  ✓ 暂停时下标停在正在读的第 2 句（供界面记住）（实际 1，期望 1）
+  ✓ 暂停期间不再往下读（实际 "AB"，期望 "AB"）
+  ✓ 暂停不算读完（不触发 onEnd）
+  ✓ 恢复后从记住的那一句开头重读（句子级恢复）（实际 "ABB"，期望 "ABB"）
+  ✓ 恢复后下标仍是那一句（实际 1，期望 1）
+[需求4] 用户暂停期间，别的音源播完不能把听书唤醒
+  ✓ 用户暂停期间不会被别的音源唤醒（否则一点词就自动续读）（实际 "A"，期望 "A"）
+  ✓ 仍处于暂停状态
+  ✓ 用户点「继续」才从该句重读（实际 "AA"，期望 "AA"）
+[需求5] 双击某句 → 从该句重读，读完继续（默认）
+  ✓ 从双击的那一句开始（实际 "B"，期望 "B"）
+  ✓ 默认继续往下读（实际 "BC"，期望 "BC"）
+[需求5] 「只读这一句」→ 读完就停
+  ✓ 第 2 句的最后一个单元下标是 1（实际 1，期望 1）
+  ✓ 只读这一句时先读它（实际 "B"，期望 "B"）
+  ✓ 读完这一句就停（不会读到 C）（实际 "B"，期望 "B"）
+  ✓ 触发 onEnd（界面据此回到未播放状态）
+[需求5] 定位辅助函数
+  ✓ 首单元下标定位正确（实际 2，期望 2）
+  ✓ 找不到的句子返回 -1（调用方据此放弃）（实际 -1，期望 -1）
+[需求6] 单击单词 → 弹窗 + 发音
+  ✓ 点词处理器里直接触发发音（不只是弹窗）
+  ✓ 整句用 onDoubleClick 触发重读
+  ✓ 整句不再用 onClick（避免和点词冲突）
+  ✓ Node 里没有真实语音，speakFocused 返回 false（不抛错）（实际 false，期望 false）
+[需求7] 编辑后重新导入：同 id 覆盖、页码归零、隐藏状态清空
+  ✓ 前置条件：进度停在第 4 页（实际 3，期望 3）
+  ✓ 前置条件：有默写进度
+  ✓ 仍是同一条素材（没有新增一条）（实际 "r_1793881645993_pmklv8"，期望 "r_1793881645993_pmklv8"）
+  ✓ 原文被覆盖（实际 "Hello world again"，期望 "Hello world again"）
+  ✓ 词数按新内容重算（实际 3，期望 3）
+  ✓ 页码归零（朗读进度重置）（实际 0，期望 0）
+  ✓ 隐藏状态与已填内容被清空（实际 undefined，期望 undefined）
+[需求8] 双语判定
+  ✓ apple → en（实际 "en"，期望 "en"）
+  ✓ 苹果 → zh（实际 "zh"，期望 "zh"）
+  ✓ 含汉字即算 zh（双语隐藏按字判断）（实际 "zh"，期望 "zh"）
+  ✓ 中英段落都有 → 双语（实际 true，期望 true）
+  ✓ 只有中文 → 不是双语（实际 false，期望 false）
+  ✓ 只有英文 → 不是双语（实际 false，期望 false）
+  ✓ 单段混排也算双语（实际 true，期望 true）
+  ✓ 交替次数被统计出来（用于判断"交替出现"）（实际 2，期望 2）
+[需求8] 只隐藏中文 / 只隐藏英文
+  ✓ 隐藏中文时确实有空位（3 个）
+  ✓ 隐藏中文时全部空位都是中文：苹果/香蕉/梨
+  ✓ 隐藏英文时确实有空位（3 个）
+  ✓ 隐藏英文时全部空位都是英文：apple/banana/pear
+  ✓ target=all 时中英文都可能被隐藏
+[反向] 断言本身有效（构造错误实现应失败）
+  ✓ 纵向为主时不能判成选词（否则页面没法滚）
+  ✓ 破折号若不过滤，断言应失败
+  ✓ 去掉 natural 早退后源码断言失效（断言有效）
+  ✓ 长短停顿必须是两个档位（都写一样就测不出问题）
+  ✓ 单段纯中文不能被判成双语
+  ✓ 不传 last_page 时会沿用上次的 0（本次基线）（实际 0，期望 0）
+  ✓ 不显式传 last_page:0 → 进度被保留（这正是要显式传 0 的原因）（实际 5，期望 5）
+
+阅读器 8 项需求单测全部通过 ✓
+[fitPaging] 超长段落按行拆成片段跨页（不溢出、不丢字）
+  ✓ 40 字 / 每页 25px（≈20 字）→ 2 页（实际 2，期望 2）
+  ✓ 第 1 页片段属于第 0 段（实际 0，期望 0）
+  ✓ 第 1 页片段从 0 开始（实际 0，期望 0）
+  ✓ 第 1 页放下 20 字（实际 20，期望 20）
+  ✓ 第 2 页片段接着第 20 字（实际 20，期望 20）
+  ✓ 第 2 页放完剩下的 20 字（实际 40，期望 40）
+  ✓ 片段首尾相接，不漏字不重复（实际 20，期望 20）
+[fitPaging] 段落放得下就整段收，放不下就整体挪到下一页
+  ✓ 第 1 页装不下两段（30+5+30>35）→ 2 页（实际 2，期望 2）
+  ✓ 第 1 页只有第 0 段（实际 1，期望 1）
+  ✓ 且是整段（para=0）（实际 0，期望 0）
+  ✓ 整段收下（不切段）（实际 30，期望 30）
+  ✓ 第 2 页是第 1 段（实际 1，期望 1）
+[fitPaging] 剩余高度不够放任何字符 → 换页而不是硬塞
+  ✓ 每页只放得下一段 → 2 页（实际 2，期望 2）
+  ✓ 每页恰好一段（实际 true，期望 true）
+[fitPaging] 英文尽量不切词（回退到最近的空白）
+  ✓ 长句被拆成多页（实际 2 页）
+  ✓ 第 1 页切点在词边界（end=24，字符=" "）
+[fitPaging] 完整文本无损覆盖（拼回去等于原文）
+  ✓ 每段拼回原文（分页不丢字、不重复）
+[fitPaging] 段落下标 → 页下标（取首次出现页）
+  ✓ 第 0 段在第 1 页（实际 0，期望 0）
+  ✓ 第 1 段在最后一页（实际 2，期望 2）
+[fitPaging] 兜底：字符预算分页 → 整段不拆
+  ✓ 沿用字符预算的页数（3 段 ×150 字 / 400 → 2 页）（实际 2，期望 2）
+  ✓ 第 1 页两段（实际 2，期望 2）
+  ✓ 整段起点为 0（实际 0，期望 0）
+  ✓ 整段终点为段长（实际 150，期望 150）
+[fitPaging] 边界：空输入 / 非法页高
+  ✓ 空段落 → 0 页（实际 0，期望 0）
+  ✓ 页高为 0 → 0 页（不做除法/死循环）（实际 0，期望 0）
+  ✓ 页高为负 → 0 页（实际 0，期望 0）
+  ✓ 页高极小（放不下任何一段）→ 逐字分页、正常终止（不死循环）（实际 5，期望 5）
+[反向] 断言本身有效
+  ✓ 若把整段硬塞进一页（20 字页放 40 字），断言会失败
+
+一页即一屏分页单测全部通过 ✓
+[需求4] definition_zh → 词性分组（真实数据）
+  ✓ by 有 prep. / adv. 两个词性组（实际 2，期望 2）
+  ✓ 第一组是 prep.（实际 "prep."，期望 "prep."）
+  ✓ prep. 下有 4 条释义（实际 4，期望 4）
+  ✓ 首条释义正确（没有吃掉词性前缀）（实际 "在...旁边"，期望 "在...旁边"）
+  ✓ 第二组是 adv.（实际 "adv."，期望 "adv."）
+  ✓ adv. 下有 3 条释义（实际 3，期望 3）
+  ✓ by 共 7 条释义（实际 7，期望 7）
+[需求4] 兼容 "adv. /prep." 合并写法与相邻同词性合并
+  ✓ aboard 的 "adv. /prep." 是一个组，不是两个（实际 1，期望 1）
+  ✓ 合并词性前缀被原样保留（实际 "adv. / prep."，期望 "adv. / prep."）
+  ✓ 后面那段没有词性前缀，归进同一组（实际 2，期望 2）
+  ✓ absorb 的两个 vt. 段合并为一组（实际 1，期望 1）
+  ✓ 合并后共 2 条释义（实际 2，期望 2）
+[需求4] 无词性标注 / 空值降级
+  ✓ 没有词性前缀时只有一组（实际 1，期望 1）
+  ✓ pos 为空串（由 UI 用 word.pos 兜底）（实际 ""，期望 ""）
+  ✓ undefined 返回空数组，不崩（实际 0，期望 0）
+  ✓ 纯空白返回空数组（实际 0，期望 0）
+[需求5] 释义数 != 例句数 → pooled（不硬配）
+  ✓ by 是 7 释义 / 3 例句 → 集中展示（实际 "pooled"，期望 "pooled"）
+  ✓ pooled 里是全部 3 条例句（实际 3，期望 3）
+  ✓ pooled 模式下没有一条释义被硬塞例句
+[需求5] 释义数 == 例句数 → 按数据顺序一一绑定
+  ✓ 2 释义 / 2 例句 → 精确绑定（实际 "paired"，期望 "paired"）
+  ✓ 第 1 义绑第 1 例（实际 "I went to the bank."，期望 "I went to the bank."）
+  ✓ 第 2 义绑第 2 例（实际 "I banked the money."，期望 "I banked the money."）
+  ✓ paired 模式 pooled 为空（实际 0，期望 0）
+[需求5] 边界：空例句 / 空白例句
+  ✓ 没有例句 → pooled（实际 "pooled"，期望 "pooled"）
+  ✓ 空白例句被过滤掉（实际 1，期望 1）
+  ✓ 只剩有内容的那条（实际 "Real one."，期望 "Real one."）
+[需求6] 词形还原候选（只影响查词顺序，不编造释义）
+  ✓ 去掉首尾标点（实际 "Hello"，期望 "Hello"）
+  ✓ 纯标点返回空串（不会去查库）（实际 ""，期望 ""）
+  ✓ books → book
+  ✓ running → run（双写辅音还原）
+  ✓ bigger → big
+  ✓ biggest → big
+  ✓ carried → carry
+  ✓ stopped → stop
+  ✓ 空串没有候选（实际 undefined，期望 undefined）
+  ✓ 原形本身排第一（先查准的）（实际 "books"，期望 "books"）
+[需求3] 模拟评分：语速合理性
+  ✓ 例句 8 个词（实际 8，期望 8）
+  ✓ 正好常速 → 高分（96）（实际 96，期望 96）
+  ✓ 读太快分数更低
+  ✓ 读太慢分数更低
+  ✓ 录得太短返回 0（调用方提示重录，不显示 0 分）
+  ✓ 空句子返回 0
+  ✓ 非法时长返回 0
+  ✓ 极端语速也收敛在 40-98（实际 40）
+  ✓ 时长展示（实际 "1.8s"，期望 "1.8s"）
+  ✓ 0 时长不显示负数（实际 "0.0s"，期望 "0.0s"）
+  ✓ 每档都有反馈文案
+[例句] examples 缺失时用单条 example_en 兜底
+  ✓ 空数组 → 0 条（实际 0，期望 0）
+  ✓ 单条兜底（实际 1，期望 1）
+  ✓ 有 examples 就用它（实际 2，期望 2）
+[需求9] 评分 key 稳定且按词隔离
+  ✓ key 统一小写，换词不串分（实际 "by#1"，期望 "by#1"）
+  ✓ 同词不同例句 key 不同
+[页面整体] EasyMad 渐变 + 乳白树冠 + 淡灰横线分区
+  ✓ 顶部是 EasyMad 渐变（需求给定色值，勿改）
+  ✓ 内容区用乳白底（bg-cream）
+  ✓ cream 进了 tailwind 令牌（浅/深两套）
+  ✓ 分区之间用淡灰横线分隔（无卡片阴影）
+  ✓ 树冠交顶：滚动驱动圆角变大，音标/按键行滚入吸顶层之下被盖住
+  ✓ 内容区可滚动（内置滚动条）
+  ✓ 乳白令牌已登记（浅色）
+  ✓ 乳白令牌已登记（深色）
+[需求8] 分区位置可编辑（顺序可调）
+  ✓ 分区有默认顺序
+  ✓ 分区可上移 / 下移（位置可编辑）
+  ✓ 排序是开关式，默认不开（浏览时不会误触）
+  ✓ 分区本身不带阴影（需求：不要卡片阴影）
+[需求1] 单词标题在搜索框下方，点击进编辑态
+  ✓ 搜索框在前、单词标题（编辑入口）在后
+  ✓ 点单词进入编辑，回车提交跳转
+[需求2] 音标只标真实存在的口音；无切换按钮（2026-10-06 需求更新）
+  ✓ 英/美切换按钮已去掉（只有一种口音时不提供替换按钮）
+  ✓ 不再出现美音未收录占位（没有按钮就没有这个态）
+  ✓ 有音标时标「英音」（内置词库来源即英音）
+  ✓ 朗读跟随口音设置（默认英音）
+[需求3/4] 播放/录音/收藏纯图标 + 连续朗读例句（句间 0.5s）
+  ✓ 收藏星与连续播放用自绘图标
+  ✓ 「朗读」文字提示已去掉（只留图标）
+  ✓ 「加入生词本」文字提示已去掉（只留图标）
+  ✓ 连续朗读的句间停顿用常量（0.5s）
+  ✓ 句间停顿 = 500ms（需求定死）
+[需求1] 被选中的按钮是葱绿（primary）
+  ✓ 选中态用 primary（葱绿）
+  ✓ 有「全部」这个未选中项（可来回切）
+[需求2/3] 例句行同时有喇叭和麦克风（右侧、与句子同行）
+  ✓ 喇叭 + 麦克风都在
+  ✓ 两个按钮都挂上了（顺序：播放 → 录音）
+  ✓ 录完回调评分
+  ✓ 按钮与句子同行（右侧对齐布局）
+  ✓ 例句完整展示不截断（长句可换行）
+[需求10/23] 例句默认 1 条，9 号展开 / 两条平杠收起
+  ✓ 展开（9 号）与收起（两条平杠）图标齐备
+  ✓ 默认只显示一条例句
+[需求3] 识别与录音互斥（不能同时抢麦克风）——双路逻辑收口在 useFollowMic
+  ✓ 先判断识别；识别可用就直接 return，不再开 MediaRecorder
+  ✓ 识别分支有早退
+  ✓ 模拟分在 UI 上被标注，不会冒充真实评分
+  ✓ 组件卸载释放麦克风（hook 内统一处理）
+  ✓ 单词本体跟读与例句共用同一套双路逻辑
+[需求13/14] 词性左固定列（斜体灰），释义右侧正常字体
+  ✓ 词性列固定宽度（按本词最长词性留位，位置固定）
+  ✓ 词性斜体 + 灰色
+  ✓ 释义逐条分隔（换行）
+[需求6/7] 点单词弹窗 + 跳转
+  ✓ 弹窗里有「查看详情」
+  ✓ 查不到如实说明，不猜释义
+  ✓ 例句里的单词可点
+  ✓ 弹窗的查看详情会跳转
+  ✓ 跳转到该单词详情页
+[需求8] 顶部搜索框 + 模糊结果 + 回车跳转
+  ✓ 输入即查词库
+  ✓ 回车提交
+  ✓ 结果列表可收起
+  ✓ 有结果跳第一条，没结果按原样跳
+[需求18] 返回箭头（5 号）+ 状态持久化
+  ✓ 有返回箭头（述树 5 号左箭头）
+  ✓ 返回上一页
+  ✓ 无上一页时退回搜索页，不会点了没反应
+  ✓ 详情页 UI 态进了 persist
+  ✓ 状态被持久化（切页回来还在）
+[边界] 数据层：详情页加载走「先定位词本」
+  ✓ 新增按词加载完整词条
+  ✓ 先走搜索索引定位词本，查不到才回退全量（避免一上来就 19MB）
+  ✓ 查屈折形式时先走索引，全都落空才做一次全量建 Map
+[反向] 构造错误实现，断言应当失效
+  ✓ 错误实现（硬配）下这条应失败：说明断言有效
+  ✓ 原始字符串确实带词性前缀（解析不能把它留在释义里）
+  ✓ 极端值被 clamp 住
+  ✓ 空白例句不入库
+  ✓ 按词计数，不是按整句
+  ✓ 原形优先，不被还原规则误伤
+  ✓ 改掉渐变色后源码断言失效（断言有效）
+[全局图标] 底部导航 / 收藏星 / 去详情 / 重置 / 消息
+  ✓ 底部导航用 3/1/2/4 号自绘图标
+  ✓ 搜索单词卡：8 号收藏星 + 6 号去详情
+  ✓ 收藏态有实心（橙）样式
+  ✓ 弹窗「查看详情」用 6 号右箭头
+  ✓ 阅读器清空本页用 10 号回转箭头
+  ✓ 错误重试用 10 号回转箭头
+  ✓ 我的页消息入口用 11 号信封
+  ✓ 导入入口用新导入图标
+  ✓ 收藏可取消（再点一次真的移除，8 号空心）
+  ✓ 自绘图标默认 aria-hidden（语义由按钮承担）
+[学习页] 去跳转 / 卡上去收藏 / 「完成」+ 烟花庆祝
+  ✓ 学习页中部不再有「去生词本闯关 / 复习」跳转（学习时不跳走）
+  ✓ 弹窗副按钮不再是「先去生词本闯关」
+  ✓ 弹窗副按钮改为「完成」，点击回主页并带烟花标记
+  ✓ 烟花不挂学习页（导航会卸载），由 Home 播放
+  ✓ Home 接收 firework 标记并播放烟花（刷新 state 消失，不重放）
+  ✓ 学习卡不再有生词本按钮（收藏相关死代码已清）
+  ✓ 学习卡保留点读 / 跟读（删收藏不丢原功能）
+  ✓ 烟花组件：总时长常量 + 无障碍舞台（aria-hidden、不挡交互）
+  ✓ 烟花密度：11 朵错峰绽放（10-21 加密）
+  ✓ 烟花配色加权随机：新增金黄 / 淡粉，绿黄系为主（10-21 扩色）
+  ✓ 每朵粒子 26–34 颗、飞散 52–118px（密度上调）
+  ✓ 烟花 keyframes 落在 index.css（纯 CSS 实现）
+  ✓ 系统减少动效时烟花整体隐藏
+[全局搜索] 相似度打分 / 防抖 / 键盘跟随 / 停靠层级
+  ✓ 精确相等 1000 分置顶
+  ✓ 前缀档内按查询占比排（into > indoor）
+  ✓ 词内包含落包含档（700+）
+  ✓ 拼写容错：helo→hello(距离1)=452、helo→help(距离1)=460
+  ✓ 容错边界：编辑距离 >2 不匹配
+  ✓ 词形还原：running → run 命中还原档
+  ✓ 单字母查询不走中文释义档（避开 adv. 缩写噪音）
+  ✓ 纯 ASCII 查询不走中文释义档（adv 不命中释义里的 adv.）
+  ✓ 中文查询走释义档（国外 → abroad）
+  ✓ levenshtein 基本正确（实际 1，期望 1）
+  ✓ levenshtein 经典用例（实际 3，期望 3）
+  ✓ rankByScore 返回 desc（最匹配在前），UI 层反转为「最匹配在最底」（实际 "in,into,inner,indoor,inning,print"，期望 "in,into,inner,indoor,inning,print"）
+  ✓ limit 生效（实际 2，期望 2）
+  ✓ 空白查询返回空（实际 0，期望 0）
+  ✓ 22,791 词全量打分排序 <150ms（实测 19.5ms，防抖 300ms 有余量）
+  ✓ 防抖 300ms 走 useDebouncedValue 尾延迟
+  ✓ 竞态防护：旧查询响应直接丢弃
+  ✓ 点历史后防抖再来不重复搜
+  ✓ 全屏搜索层：Portal 到 body + fixed 全屏 + 层底跟随键盘高度
+  ✓ IME 组词期间回车不误触（isComposing + 229 兜底）
+  ✓ 空态文案统一「该词暂未收录」
+  ✓ 结果反序渲染 + 自动滚底（最匹配紧贴输入框）
+  ✓ 列表贴底：结果少时整体靠下、多余空间留在上方
+  ✓ 无「查看全部结果」入口（用户 2026-10-21 确认去掉，全页结果走回车）
+  ✓ 输入框与清空按钮有 aria-label
+  ✓ 输入框 16px 字号 + 聚焦无环只留光标（全局焦点环显式豁免）
+  ✓ 搜索区走 repository.searchRanked（相似度排序版）
+  ✓ 语音输入从 TopSearchBar 迁入（zh-CN 识别，partial 实时回填）
+  ✓ 扫描识别入口保留（跳 /import?tab=scan）
+  ✓ 语音/扫描按钮有 aria-label（语音按识别态切换文案）
+  ✓ 历史唯一写入点：点击结果跳详情才记；打字/回车不留痕
+  ✓ 历史按时间倒序直接渲染（最近点击在最上面，不反序）
+  ✓ 重复访问标 ×N 角标（>1 才显示）
+  ✓ 历史可一键清空
+  ✓ 无输入时显示历史访问记录（时钟图标 + 标题行）
+  ✓ 历史上限常量在组件内引用（与 store 同源）
+  ✓ store：历史改为访问记录模型 {query,count,lastAt}
+  ✓ 访问记录：小写去重、count+1、刷新时间、置顶、超上限丢最旧
+  ✓ persist merge 迁移旧 string[] 存档为访问记录（升级用户不丢）
+  ✓ store：searchHistory 默认空 + 上限 10
+  ✓ searchHistory 进 persist 白名单（跨会话保留）
+  ✓ 键盘高度经 visualViewport 写 --kb-inset（iOS 唯一可靠来源）
+  ✓ 主路径也有 120px 噪音阈值 + 卸载清理变量
+  ✓ 防抖 hook：空值立即生效 + 定时器随 value 变化/卸载取消
+  ✓ 通用隐藏滚动条工具类落地（搜索列表复用）
+  ✓ 阅读器滚动条一律隐藏（含上下滚动模式，保留滚动能力）
+  ✓ scroll/记忆模式底部留白补足到导航栏高度（56px，防末行被导航栏盖住）
+  ✓ AppShell 启用键盘监听并支持全局搜索开关
+  ✓ 底部停靠组 sticky + z-30 + 键盘偏移 + 安全区收敛在容器
+  ✓ 停靠组顺序：搜索框在上、Tab 栏在下（2026-10-21 用户定稿，防回退）
+  ✓ 顶栏撤掉后 safe-top 转移到 main（刘海安全区不丢）
+  ✓ AppShell 不再渲染顶部搜索栏
+  ✓ 旧组件文件已删除（TopSearchBar / GlobalSearchDock，不保留两套）
+  ✓ Tab 栏自身不再 sticky（定位交给停靠组，避免两个 sticky 互相重叠）
+  ✓ /search 页传 showGlobalSearch={false}；showTopSearch prop 已随顶栏废弃清理
+  ✓ repository 暴露 searchRanked 并复用归并逻辑
+  ✓ 全局键盘焦点环补齐（原缺失，搜索区键盘导航可见）
+
+单词详情页单测全部通过 ✓
+ok: 远端 updated_at 更大 → 远端胜
+ok: 本地 updated_at 更大 → 本地胜
+ok: 本地为空 → 采用远端
+ok: 远端删除晚于本地编辑 → 删除胜（墓碑）
+ok: 远端删除早于本地编辑 → 编辑胜
+ok: 本地为空 + 远端删除 → 墓碑保留
+test_sync done
+[格式识别] 扩展名识别
+  ✓ pdf 大小写不敏感（实际 "pdf"，期望 "pdf"）
+  ✓ docx 中文名（实际 "docx"，期望 "docx"）
+  ✓ png（实际 "png"，期望 "png"）
+  ✓ jpeg 归并到 jpg（实际 "jpg"，期望 "jpg"）
+  ✓ xlsx（实际 "xlsx"，期望 "xlsx"）
+  ✓ 无扩展名返回 null（不臆造）（实际 null，期望 null）
+  ✓ 不支持的格式返回 null（实际 null，期望 null）
+[格式识别] MIME 回退
+  ✓ MIME 兜底 pdf（实际 "pdf"，期望 "pdf"）
+  ✓ MIME 兜底 png（实际 "png"，期望 "png"）
+  ✓ 扩展名优先于 MIME（实际 "pdf"，期望 "pdf"）
+  ✓ 无匹配返回 null（实际 null，期望 null）
+[目标候选] 仅返回白名单组合
+  ✓ pdf 候选为 docx/png（实际 "[\"docx\",\"png\"]"，期望 "[\"docx\",\"png\"]"）
+  ✓ jpg 候选为 pdf（实际 "[\"pdf\"]"，期望 "[\"pdf\"]"）
+  ✓ xlsx 候选为 pdf（实际 "[\"pdf\"]"，期望 "[\"pdf\"]"）
+  ✓ docx 仅 1 候选（实际 1，期望 1）
+[合法性] 组合校验
+  ✓ pdf→docx 合法
+  ✓ docx→pdf 合法
+  ✓ 同格式不合法
+  ✓ pdf→xlsx 不在白名单
+  ✓ pdf 是合法源
+  ✓ txt 不是合法源
+[常量] 标签与 accept
+  ✓ pdf 标签（实际 "PDF"，期望 "PDF"）
+  ✓ accept 含 docx
+  ✓ V1 共 6 条白名单组合（实际 6，期望 6）
+
+格式转换纯逻辑单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+subtitle: formatTimecode
+  ✓ 0 秒（实际 00:00:00,000，期望 00:00:00,000）
+  ✓ 1.5 秒 -> 1,500 毫秒（实际 00:00:01,500，期望 00:00:01,500）
+  ✓ 61.25 秒进位到分（实际 00:01:01.250，期望 00:01:01.250）
+  ✓ 3661.5 秒跨小时进位（实际 01:01:01,500，期望 01:01:01,500）
+  ✓ 3599.999 毫秒舍入到 999（实际 00:59:59,999，期望 00:59:59,999）
+  ✓ 0.5 毫秒按 Math.round 进 1（实际 00:00:00,001，期望 00:00:00,001）
+  ✓ 整两小时（实际 02:00:00,000，期望 02:00:00,000）
+  ✓ 负数按 0 处理（不抛错）（实际 00:00:00,000，期望 00:00:00,000）
+  ✓ NaN 按 0 处理（不抛错）（实际 00:00:00,000，期望 00:00:00,000）
+subtitle: toTxt / toSrt / toVtt
+  ✓ TXT 每段一行且 Trim（实际 Hello
+world，期望 Hello
+world）
+  ✓ TXT 空输入为空串（实际 ，期望 ）
+  ✓ TXT 跳过空文本段（实际 a，期望 a）
+  ✓ SRT 序号/时间线/文本/空行结构（实际 1
+00:00:00,000 --> 00:00:01,500
+Hello
+
+2
+00:00:01,500 --> 00:00:03,250
+world
+，期望 1
+00:00:00,000 --> 00:00:01,500
+Hello
+
+2
+00:00:01,500 --> 00:00:03,250
+world
+）
+  ✓ SRT 空输入为空串（实际 ，期望 ）
+  ✓ VTT 带头与点号时间码（实际 WEBVTT
+
+00:00:00.000 --> 00:00:01.500
+Hello
+
+00:00:01.500 --> 00:00:03.250
+world
+，期望 WEBVTT
+
+00:00:00.000 --> 00:00:01.500
+Hello
+
+00:00:01.500 --> 00:00:03.250
+world
+）
+  ✓ VTT 空输入只保留头（实际 WEBVTT
+，期望 WEBVTT
+）
+subtitle: toCsv（UTF-8 BOM + CRLF + RFC4180 转义 + 边界）
+  ✓ CSV 首字节为 UTF-8 BOM（Excel 中文不乱码）
+  ✓ CSV 行尾 CRLF（兼容常见表格软件）
+  ✓ CSV 首行为列名
+  ✓ CSV 中文与秒级 3 位小数时间
+  ✓ CSV 逗号+双引号按 RFC4180 转义（引号翻倍）
+  ✓ CSV 内含换行时整体加引号
+  ✓ CSV 跳过空文本段
+  ✓ CSV 空输入只有 BOM+列名（实际 ﻿index,start_time,end_time,text，期望 ﻿index,start_time,end_time,text）
+  ✓ CSV 非有限时间输出空串（不伪造时间）（实际 1,,2.000,x，期望 1,,2.000,x）
+  ✓ CSV 回读：1 列名 + 3 数据行（空段已跳过）（实际 4，期望 4）
+  ✓ CSV 回读：中文字段无损（实际 你好，世界，期望 你好，世界）
+  ✓ CSV 回读：引号字段还原（实际 He said "hello", then left.，期望 He said "hello", then left.）
+  ✓ CSV 回读：换行字段还原（实际 line one
+line two，期望 line one
+line two）
+  ✓ CSV 回读：index 列连续（实际 1，期望 1）
+subtitle: toJson（完整结构化数据）
+  ✓ JSON 带 id（有则输出）（实际 job-1，期望 job-1）
+  ✓ JSON 带 language（实际 en，期望 en）
+  ✓ JSON 带 duration（实际 12.5，期望 12.5）
+  ✓ JSON 带 fileName（有则输出）（实际 a.mp3，期望 a.mp3）
+  ✓ JSON 带全部 segments（实际 2，期望 2）
+  ✓ JSON 保留每段 start（实际 1.5，期望 1.5）
+  ✓ JSON 保留每段 end（实际 3.25，期望 3.25）
+  ✓ JSON 文本原样（不 Trim，保真）（实际   world  ，期望   world  ）
+  ✓ JSON 无 id 时不编造
+  ✓ JSON 无 fileName 时不编造
+validate: validateMediaFile
+  ✓ mp3 通过（实际 true，期望 true）
+  ✓ 大写扩展名通过（实际 true，期望 true）
+  ✓ mov 通过（实际 true，期望 true）
+  ✓ webm 通过（实际 true，期望 true）
+  ✓ m4a 通过（实际 true，期望 true）
+  ✓ wav 通过（实际 true，期望 true）
+  ✓ txt 拒绝（实际 false，期望 false）
+  ✓ 无扩展名拒绝（实际 false，期望 false）
+  ✓ 恰好 100MB 通过（含等于）（实际 true，期望 true）
+  ✓ 100MB+1 拒绝（实际 false，期望 false）
+  ✓ 空文件拒绝（实际 false，期望 false）
+transcribe: 编排与错误映射
+  ✓ 成功链路：Transcript.id 取服务端 jobId（实际 job-1，期望 job-1）
+  ✓ 成功链路：语言透传（实际 en，期望 en）
+  ✓ 成功链路：时长透传（实际 12.5，期望 12.5）
+  ✓ 成功链路：段落数透传（实际 2，期望 2）
+  ✓ 成功链路：1 次提交 + 3 次轮询（实际 4，期望 4）
+  ✓ 成功链路：提交打到 /asr/jobs
+  ✓ 成功链路：轮询打到 /asr/jobs/:id
+  ✓ 成功链路：阶段回调先报 submit（实际 submit:提交中…，期望 submit:提交中…）
+  ✓ 成功链路：随后报 queued（实际 queued:排队中…，期望 queued:排队中…）
+  ✓ 成功链路：最后报 done（实际 done:转写完成，期望 done:转写完成）
+  ✓ 提交即败：原样透出服务端错误消息
+  ✓ 轮询失败：原样透出服务端错误消息
+  ✓ 503：ApiRequestError.status === 503
+  ✓ 503：错误消息原样透出
+  ✓ 404：ApiRequestError.status === 404
+  ✓ 非 JSON：明确报错而不是把 null 流进上层
+  ✓ 轮询耗尽：如实告知结果不保留
+
+transcript 单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+transcripts: save / 幂等覆盖 / 查询 / 索引
+studyNotes: upsert / 覆盖不追加 / patch / 删除
+transcribeAndSave: done 后自动落库
+阅读器接入: ensureTranscriptReading / backfill / 幂等 / getLatest / reconcile
+  ✓ 落库记录 source=asr（实际 asr，期望 asr）
+  ✓ created_at 为 epoch ms（实际 number，期望 number）
+  ✓ segments 原样带入（实际 2，期望 2）
+  ✓ get 按 job_id 命中
+  ✓ 同 job_id 重复 done：覆盖不追加（字段已更新）（实际 20，期望 20）
+  ✓ 覆盖后 segments 为新值（实际 1，期望 1）
+  ✓ 覆盖后表内仍只有 1 行（实际 1，期望 1）
+  ✓ list 返回全部字幕（实际 1，期望 1）
+  ✓ source 索引可查（v9 索引已接）（实际 1，期望 1）
+  ✓ 新建行 id 由服务层生成（uuid）
+  ✓ 默认 status=generating（实际 generating，期望 generating）
+  ✓ 默认 source=ai_generated（实际 ai_generated，期望 ai_generated）
+  ✓ vocabulary 契约字段（含 pos）原样往返（实际 adj，期望 adj）
+  ✓ updated_at >= created_at
+  ✓ 同 transcript_id upsert：id 不变（原地重置）（实际 d02fc9bc-e05c-43ab-82a8-e0e223b63ec8，期望 d02fc9bc-e05c-43ab-82a8-e0e223b63ec8）
+  ✓ created_at 保留（覆盖不是新建）（实际 1793881647694，期望 1793881647694）
+  ✓ 内容字段已重置（实际 第二版摘要，期望 第二版摘要）
+  ✓ status 可由草稿指定（实际 ready，期望 ready）
+  ✓ 重生成后 source 重置为 ai_generated（评审冻结）（实际 ai_generated，期望 ai_generated）
+  ✓ 覆盖后仍只有 1 行（无孤儿记录）（实际 1，期望 1）
+  ✓ 按 transcript_id 索引可查（实际 第二版摘要，期望 第二版摘要）
+  ✓ patch 局部更新生效（实际 用户改过的摘要，期望 用户改过的摘要）
+  ✓ 用户编辑 -> status=modified（实际 modified，期望 modified）
+  ✓ patch 刷新 updated_at
+  ✓ patch 不存在的 id 返回 undefined（不编造）（实际 undefined，期望 undefined）
+  ✓ 删除后表为空（实际 0，期望 0）
+  ✓ 编排返回 Transcript（行为不变）（实际 job-2，期望 job-2）
+  ✓ done 后 transcripts 表已有记录
+  ✓ 落库内容 = 服务端归一化结果（实际 zh，期望 zh）
+  ✓ segments 原样落库（实际 你好，期望 你好）
+  ✓ transcribeAndSave 后阅读器资料已自动登记（t_job-2）
+  ✓ 登记类型为 transcript（实际 transcript，期望 transcript）
+  ✓ 阅读器正文 = 全段拼接文本（实际 你好，期望 你好）
+  ✓ segments 时间戳随资料保留（不丢）（实际 1，期望 1）
+  ✓ 资料标题取原始文件名（实际 a.mp3，期望 a.mp3）
+  ✓ 幂等键 = t_<ASR jobId>（不凭标题去重）（实际 t_job-rt-1，期望 t_job-rt-1）
+  ✓ 类型 transcript（实际 transcript，期望 transcript）
+  ✓ 标题取原始文件名（实际 lesson-one.mp4，期望 lesson-one.mp4）
+  ✓ 正文 = 全段拼接（空文本段跳过，CSV/TXT 同口径）（实际 Good morning, class.
+Today we learn, "AI", together.，期望 Good morning, class.
+Today we learn, "AI", together.）
+  ✓ segments 全量保留（含空段，不篡改源数据）（实际 3，期望 3）
+  ✓ ensure 一次只产生一条资料（实际 1，期望 1）
+  ✓ 重复 ensure：id 不变（实际 t_job-rt-1，期望 t_job-rt-1）
+  ✓ 重复 ensure：阅读进度保留（不清零）（实际 3，期望 3）
+  ✓ 重复 ensure：表内仍只有 1 条资料（实际 1，期望 1）
+  ✓ backfill 只为缺失的 job-rt-2 建资料（实际 1，期望 1）
+  ✓ backfill 跳过已存在的 job-rt-1（实际 1，期望 1）
+  ✓ 二次 backfill：0 新建（幂等）（实际 0，期望 0）
+  ✓ 二次 backfill：全部跳过（实际 2，期望 2）
+  ✓ 两条转写 = 恰好两条资料，无重复（实际 2，期望 2）
+  ✓ getLatest 返回 created_at 最新的一条（实际 job-rt-2，期望 job-rt-2）
+[transcript] 补齐历史转写资料 2 条（已存在 0 条）
+  ✓ reconcile 重复执行不产生重复资料（实际 2，期望 2）
+  ✓ reconcile 后历史转写均已进入阅读器
+  ✓ 补齐资料内容来自库内真实转写（不重生成）（实际 你好，期望 你好）
+
+transcript store 单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+validateStudyNotePayload: 收敛与拒收
+matchVocabularyContext: 命中 / 未命中 / 不覆盖已有值
+generateAndSaveStudyNote: SSE 全链路与失败分类
+  ✓ 完整四要素通过
+  ✓ 内容原样保留
+  ✓ 混合坏数据仍收敛
+  ✓ 缺 zh 的双语条被丢弃（实际 1，期望 1）
+  ✓ 非字符串要点被丢弃（实际 1，期望 1）
+  ✓ 重复词去重、缺 gloss 丢弃（实际 1，期望 1）
+  ✓ 缺 pos 回退空串（词不丢）（实际 ，期望 ）
+  ✓ 空对象判败
+  ✓ 四要素全空判败
+  ✓ 仅有词汇也通过（summary 空串）
+  ✓ 中文素材形态（en 英译/zh 原句/词汇空数组）原样通过
+  ✓ bold 命中第 3 段原句（实际 You are a bold one，期望 You are a bold one）
+  ✓ bold 记段起点秒（实际 3.25，期望 3.25）
+  ✓ reluctant 未命中：不硬造
+  ✓ 已有 segment_start 不被覆盖（实际 99，期望 99）
+  ✓ 大小写不敏感命中（实际 1.5，期望 1.5）
+  ✓ 落库 status=ready（实际 ready，期望 ready）
+  ✓ summary 落库（实际 两个角色互相致意。，期望 两个角色互相致意。）
+  ✓ bilingual_notes 结构化数组落库（实际 2，期望 2）
+  ✓ vocabulary 回匹后落库（实际 3.25，期望 3.25）
+  ✓ onDelta 累加递增
+  ✓ 按 transcript_id 可读回（实际 da425577-f22c-40ac-ba85-8aab599eb3c0，期望 da425577-f22c-40ac-ba85-8aab599eb3c0）
+  ✓ 二次生成：同 id 原地重置（无孤儿）（实际 da425577-f22c-40ac-ba85-8aab599eb3c0，期望 da425577-f22c-40ac-ba85-8aab599eb3c0）
+  ✓ 覆盖后仍 1 行（实际 1，期望 1）
+  ✓ SSE error：code 透传（timeout_first_token）（实际 timeout_first_token，期望 timeout_first_token）
+  ✓ SSE error：message 透传（实际 首 token 超时，期望 首 token 超时）
+  ✓ 503 未接入：HTTP status 透出（UI 走空态引导）（实际 503，期望 503）
+  ✓ 503 文案含「未接入」
+  ✓ done 内容非合法契约：invalid_payload（实际 invalid_payload，期望 invalid_payload）
+  ✓ 流关闭无 done：incomplete_stream（实际 incomplete_stream，期望 incomplete_stream）
+
+study note generate 单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+lemma 候选：常见变形、原词优先、功能词、组合上限
+resolveVocabDict: 精确 / 还原 / 未命中 / 标点清洗
+resolveVocabularyDictHits + pickEntryByPos
+generateAndSaveStudyNote: dict_key 落库链路
+入生词本：权威词形 + 幂等 + SRS
+  ✓ 原词排候选首位（实际 looking，期望 looking）
+  ✓ looking → look（去 ing）
+  ✓ looking → looke（去 ing+e，噪声候选无害）
+  ✓ running → run（双写辅音还原）
+  ✓ carries → carry（ies → y）
+  ✓ boxes → box（去 es）
+  ✓ stopped → stop（双写还原）
+  ✓ liked → like（去 ed+e）
+  ✓ cats → cat（去 s）
+  ✓ 空串返回空候选（实际 0，期望 0）
+  ✓ 无规则可剥时只返回原词（实际 1，期望 1）
+  ✓ 短语原样排首位（实际 looking forward to meeting，期望 looking forward to meeting）
+  ✓ 短语逐词还原组合（looking→look，to 不还原）
+  ✓ 短语第二词也还原的组合存在
+  ✓ 短语组合数受上限约束（实际 8）
+  ✓ 精确命中（原样词形）
+  ✓ dict_key = 词条 key（实际 bold|adjective，期望 bold|adjective）
+  ✓ looked → 还原命中 look
+  ✓ 命中返回全部同词形词条（实际 1，期望 1）
+  ✓ running → 命中 run（双写还原）
+  ✓ 未命中返回 null（不编造）（实际 null，期望 null）
+  ✓ 词两侧引号句号被清洗后命中
+  ✓ 同词形多词条全部返回（实际 2，期望 2）
+  ✓ 第一项精确命中记 dict_key（实际 bold|adjective，期望 bold|adjective）
+  ✓ 第二项还原命中 run（实际 run|verb，期望 run|verb）
+  ✓ 未命中项不记 dict_key（原样保留 gloss）
+  ✓ pickEntryByPos 精确匹配词性（实际 verb，期望 verb）
+  ✓ pos 全不匹配回退第一条（不编造）（实际 noun，期望 noun）
+  ✓ 落库 ready（实际 ready，期望 ready）
+  ✓ bold 命中词库（精确）（实际 bold|adjective，期望 bold|adjective）
+  ✓ running 命中词库（词形还原）（实际 run|verb，期望 run|verb）
+  ✓ carries 命中词库（还原 carries→carry）（实际 carry|verb，期望 carry|verb）
+  ✓ 回匹仍然生效（bold 在 0s 段）（实际 0，期望 0）
+  ✓ 三个词全部保留（实际 3，期望 3）
+  ✓ 入本即 new 层（实际 new，期望 new）
+  ✓ SRS 首复习已排程（10min 后）
+  ✓ word_id 口径（无 book → x:小写词）
+  ✓ 重复入本幂等（同 id）（实际 x:look，期望 x:look）
+  ✓ vocab 表仍 1 行（实际 1，期望 1）
+  ✓ isInVocab 命中（词形一致口径）（实际 true，期望 true）
+  ✓ 词形不一致不算已在（真实边界，UI 已按命中词形检查）（实际 false，期望 false）
+  ✓ makeWordId 大小写归一（实际 x:look，期望 x:look）
+
+study note dict 单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+例外表纪律：规模、格式、同形、一致性
+  ✓ 收录 ≥150 条（实际 249）
+  ✓ 全部 key/value 为小写纯字母且非空
+  ✓ 无同形条目（cut→cut 类不入表）
+  ✓ 抽查 27 组关键映射全部为真实变形关系
+过去式 → 原形（查表优先）
+  ✓ 43 个过去式：首候选=原形且原词兜底
+  ✓ 例外表命中后不走规则链路（长度=2，无 we/wentt 噪声）（实际 2，期望 2）
+过去分词 → 原形
+  ✓ 35 个过去分词：首候选=原形
+不规则复数 → 单数
+  ✓ 26 个不规则复数：首候选=单数
+大小写不敏感
+  ✓ Went → go（实际 go，期望 go）
+  ✓ CHILDREN → child（实际 child，期望 child）
+  ✓ Gone → go（实际 go，期望 go）
+  ✓ Was → be（实际 be，期望 be）
+  ✓ WROTE → write（实际 write，期望 write）
+规则词回归
+  ✓ 12 个规则变形仍含原形候选
+短语路径（逐词查表）
+  ✓ went home 含 go home
+  ✓ 短语原样仍在首位（实际 went home，期望 went home）
+  ✓ mice ran 含 mouse run（两词都还原）
+  ✓ the mice 含 the mouse（功能词保留）
+  ✓ children played 含 child played
+边界：同形/空串/未知词不崩
+  ✓ 同形 read：原词在候选、无冗余候选
+  ✓ 同形 put：查表无增益，原词即首选
+  ✓ 空串返回空候选（实际 0，期望 0）
+  ✓ 未知词只返回原词（不编造）（实际 1，期望 1）
+  ✓ 未知词候选全部为 string
+resolveVocabDict 端到端
+  ✓ gone → 端到端命中 go（例外表+精确索引）
+  ✓ dict_key 正确（实际 go|verb，期望 go|verb）
+  ✓ children → 端到端命中 child
+  ✓ went → 端到端命中 go
+  ✓ running → 规则路径仍命中 run（回归）
+  ✓ 未知词端到端未命中（null，不编造）（实际 null，期望 null）
+
+irregular 单测全部通过 ✓
+[storage] 当前环境没有 IndexedDB，已降级为内存存储：数据不会持久化（刷新即丢）。
+parseDictFormFromKey：dict_key 反解析词形
+orderEntriesForVocab：去重 / pos 优先 / 稳定排序
+resolveVocabDictEntriesByKey：集成查询链路
+词形还原后补查全部词条：规则 + 不规则
+契约回归：dict_key 语义与落库形态不变
+  ✓ 正常 key：取 | 前段（实际 abc，期望 abc）
+  ✓ 单字母词形（真实词条 a|article）（实际 a，期望 a）
+  ✓ pos 段空：词形段仍有效（实际 abc，期望 abc）
+  ✓ 无 |：返回 null（实际 null，期望 null）
+  ✓ 词形段空：返回 null（实际 null，期望 null）
+  ✓ 空串：null（实际 null，期望 null）
+  ✓ 多 |：只取第一段前（pos 不含 |，防御性）（实际 abc，期望 abc）
+  ✓ LLM pos 命中的排最前（noun）（实际 noun，期望 noun）
+  ✓ LLM pos 命中的排最前（abbreviation）（实际 abbreviation，期望 abbreviation）
+  ✓ pos 不匹配：保持输入原序（第一条兜底）（实际 abbreviation，期望 abbreviation）
+  ✓ pos 不匹配：不丢条目（实际 2，期望 2）
+  ✓ LLM pos 为空：保持原序（实际 abbreviation，期望 abbreviation）
+  ✓ 同 key 重复记录只保留一次（实际 2，期望 2）
+  ✓ 去重后 pos 命中仍优先（实际 noun，期望 noun）
+  ✓ 同 pos 不同 key 的记录不因 pos 相同被误删（去重按 key 不按 pos）（实际 2，期望 2）
+  ✓ 命中项前置（实际 verb，期望 verb）
+  ✓ 未命中项殿后且原序保持（实际 noun，期望 noun）
+  ✓ 空数组安全（实际 0，期望 0）
+  ✓ 单义项只返回一条（实际 1，期望 1）
+  ✓ 词形为真实小写 a（实际 a，期望 a）
+  ✓ 例句字段完整保留（3 条真实例句）（实际 3，期望 3）
+  ✓ definition_zh 原文照登（不加工不编造）
+  ✓ 同词形两个 pos 全部返回（真实 ABC 案例）（实际 2，期望 2）
+  ✓ LLM pos=noun：noun 排最前（实际 noun，期望 noun）
+  ✓ 其余 pos 依次展示（实际 abbreviation，期望 abbreviation）
+  ✓ 展示词库原始词形（大写 ABC，不是 dict_key 里的小写）（实际 ABC，期望 ABC）
+  ✓ LLM pos=abbreviation：排序随之改变（实际 abbreviation，期望 abbreviation）
+  ✓ LLM pos 为空：两条都还在（实际 2，期望 2）
+  ✓ ABC 两条 examples 为空：不编造句例
+  ✓ 首条 noun 已删：只剩 abbreviation 一条（实际 1，期望 1）
+  ✓ 部分缺失如实呈现现存词条（不被整体判缺失）（实际 abbreviation，期望 abbreviation）
+  ✓ 词库清空：返回 []（UI 走缺失降级，不抛错）（实际 0，期望 0）
+  ✓ 从未收录：返回 []（实际 0，期望 0）
+  ✓ abating 还原命中 abate（真实词条）
+  ✓ dict_key 口径不变（word|pos）（实际 abate|verb，期望 abate|verb）
+  ✓ 还原后按 key 补查到该词形全部词条（实际 1，期望 1）
+  ✓ 例句随词条返回（实际 1，期望 1）
+  ✓ gone → go（例外表还原后 dict_key 正确）（实际 go|verb，期望 go|verb）
+  ✓ 不规则还原后补查命中（实际 1，期望 1）
+  ✓ 返回词典原始词形 go（实际 go，期望 go）
+  ✓ children → child 还原命中（实际 child|noun，期望 child|noun）
+  ✓ 不规则复数还原后补查命中（实际 1，期望 1）
+  ✓ 短语整查未命中：null（不硬凑）（实际 null，期望 null）
+  ✓ 未知词：null（实际 null，期望 null）
+  ✓ 生成链命中仍记首条 dict_key（契约不变）（实际 abandon|verb.transitive，期望 abandon|verb.transitive）
+  ✓ 多义项也记首条（abc 两条取查询首位）（实际 abc|noun，期望 abc|noun）
+  ✓ 落库 ready（生成链路不退化）（实际 ready，期望 ready）
+  ✓ 词汇数不变（实际 2，期望 2）
+  ✓ 落库 dict_key 仍是单值字符串（无 dict_keys 新字段）（实际 abc|noun，期望 abc|noun）
+  ✓ StudyNoteVocabulary 未新增 dict_keys 字段（契约冻结）
+  ✓ 落库 key → UI 补查 → 两条义项全现（闭环）（实际 2，期望 2）
+  ✓ 闭环里 LLM pos 优先仍生效（实际 noun，期望 noun）
+
+vocab senses 单测全部通过 ✓
+  ✓ 默认基址拼接 /discover（实际 /api/discover）
+  ✓ 请求体含 query 与 top_k=10
+  ✓ 响应 snake_case 字段逐字透传（client 不改写）
+  ✓ 200 + HTML（SPA 回退误接）→ 明确报错而非 null 进上层
+  ✓ 空白 query → empty_query
+  ✓ 空 query 不发请求（实际 0 次）
+  ✓ 成功映射为 BookHit（title）
+  ✓ snake_case → camelCase 映射（chapterTitle / chunkIndex）
+  ✓ e2eMs 取自 latency.e2e_ms
+  ✓ meta.returned 与结果条数不符 → bad_response
+  ✓ 结果项缺 title → bad_response
+  ✓ 5xx 共 3 次尝试（实际 3）
+  ✓ 5xx 重试后仍失败 → server_error
+  ✓ 503 不重试，只发 1 次（实际 1）
+  ✓ 503 → unavailable（服务未启动引导）
+  ✓ 400 不重试，只发 1 次（实际 1）
+  ✓ 400 → bad_request
+  ✓ AbortError（超时）→ timeout
+  ✓ 超时按 status 0 重试口径共 3 次尝试（实际 3）
+  ✓ 外部 signal 已 aborted → 直接取消，不进重试
+
+✓ test_discover 全部通过
+
+▶ 拼写判定 §2.3 / D6
+
+▶ P0-1 初始状态
+
+▶ P0-2 连续正确达到 targetCorrect 才完成
+
+▶ P0-3 任意错误立即重置连续正确
+
+▶ P0-4 错误累计与总提交次数准确
+
+▶ P0-4b 空白提交不计入任何计数
+
+▶ P0-5 request_id 幂等：重复请求不重复计数
+
+▶ P0-6 终态词条不能重复推进 / 重复计数
+
+▶ P0-7 不修改入参（单文档原子替换的前提）
+
+▶ P0-8 会话级统计 = 单词级聚合；跳过不进分母
+
+▶ P0-8b 分母为 0 → null（前端渲染 "—"）
+
+▶ D2 SRS 交接点：仅 COMPLETED 触发，且只触发一次
+
+▶ 失效词条：只转 PENDING / IN_PROGRESS，终态不动
+
+▶ 选词模式与过滤（D5 / D6）
+
+▶ 会话构造：数量不足按实际可用量
+
+▶ 暂停 / 恢复 / 放弃 / 过期判定
+
+▶ completed 后会话自然收尾
+
+────────────────────────────────────────────────────────
+✅ 单词默写 P0 单测全部通过：127 项断言
+
+▶ 创建会话：完整队列一次性持久化
+
+▶ 空池不落库：没有可练词条时直接报错
+
+▶ 已有活跃会话时不静默新建
+
+▶ 提交：正确 / 错误 / 完成都落到库里
+
+▶ 幂等：重复 request_id 不计数、不推进
+
+▶ 终态保护：完成 / 跳过后的词不能再被计数
+
+▶ 空白提交：invalid 不计数
+
+▶ 没有活跃会话时提交抛错
+
+▶ 暂停 / 恢复 / 放弃
+
+▶ 历史列表：倒序、限量、不含已放弃
+
+▶ 删除词条：仅 PENDING/IN_PROGRESS 转 UNAVAILABLE
+
+▶ 会话统计与队列计数一致
+
+▶ SRS 交接：只在完成时一次；恢复后不重复
+
+▶ SRS 交接：跳过的词不交接
+
+▶ SRS 交接：词条已删除时不反复重试
+
+▶ 选词模式：易错词会读取历史答题日志排序
+
+▶ SRS 交接：标记写库失败 → 如实报 failed，不谎报成功
+
+────────────────────────────────────────────────────────
+✅ 默写持久化层单测全部通过：112 项断言
+▶ v9 → v10 迁移：存量数据不丢、新表可用
+
+────────────────────────────────────────────────────────
+✅ v9 → v10 迁移测试全部通过：17 项断言
+▶ v11 → v14 迁移：存量数据不丢、v12 回填 owner、v14 新表可用
+  ✓ 升级后仍走 Dexie 持久化实现（期望 dexie，实际 dexie）
+  ✓ vocab 1 行原样保留（期望 1，实际 1）
+  ✓ reviewLog 1 行原样保留（期望 1，实际 1）
+  ✓ readings 2 行原样保留（期望 2，实际 2）
+  ✓ recitations 1 行原样保留（期望 1，实际 1）
+  ✓ transcripts 1 行原样保留（期望 1，实际 1）
+  ✓ studyNotes 1 行原样保留（期望 1，实际 1）
+  ✓ annotations 1 行原样保留（期望 1，实际 1）
+  ✓ spellingSessions(v10) 保留（期望 1，实际 1）
+  ✓ wordLearningSessions(v11) 保留（期望 1，实际 1）
+  ✓ r-v11-plain 还在
+  ✓ v12 为无 owner 的 readings 行补 owner=guest（期望 guest，实际 guest）
+  ✓ r-v11-alice 还在
+  ✓ v12 不覆盖已有的 owner=alice（期望 alice，实际 alice）
+  ✓ v12 为 recitations 存量行补 owner=guest（期望 guest，实际 guest）
+  ✓ v12 为 transcripts 存量行补 owner=guest（期望 guest，实际 guest）
+  ✓ v12 为 studyNotes 存量行补 owner=guest（期望 guest，实际 guest）
+  ✓ v12 为 annotations 存量行补 owner=guest（期望 guest，实际 guest）
+  ✓ spellingErrorEvents 新表为空（不凭空造数据）（期望 0，实际 0）
+  ✓ spellingErrorEvents 按主键回读成功
+  ✓ spellingErrorEvents 字段完整回读（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ spellingErrorEvents word_id 索引可用（期望 1，实际 1）
+  ✓ spellingErrorEvents status 索引可用（期望 1，实际 1）
+  ✓ readings owner 索引可按 guest 查到回填行（期望 1，实际 1）
+  ✓ readings owner 索引可按 alice 查到保留行（期望 1，实际 1）
+
+────────────────────────────────────────────────────────
+✅ v11 → v14 迁移测试全部通过：25 项断言
+
+▶ 调用时序实测：交接到底发生在哪两步之间
+    实测时序：
+      1. spellingSessions.whereIndex(status=IN_PROGRESS)
+      2. spellingSessions.whereIndex(status=PAUSED)
+      3. spellingSessions.get(key=seq-1)
+      4. spellingSessions.put(id=seq-1 type=spelling)
+      5. vocab.get(key=CET4:abandon)
+      6. reviewLog.add(quiz_form=spelling)
+      7. vocab.put(id=CET4:abandon type=?)
+      8. sync_queue.put(id=fba6ecbe-9142-4c11-a873-f4f430761f39 type=?)
+      9. sync_queue.toArray
+      10. sync_queue.put(id=b3164b49-1471-4abc-9f65-a70a9c72d6e9 type=?)
+      11. sync_queue.delete
+      12. sync_queue.toArray
+      13. spellingSessions.get(key=seq-1)
+      14. spellingSessions.put(id=seq-1 type=spelling)
+      15. sync_queue.count
+      16. sync_queue.delete
+    ⇒ 故障窗口 = ① 与 ③ 之间：recordQuiz 的 reviewLog.add + vocab.put 已生效，
+       而 srs_reported 标记尚未落库。窗口内中断 ⇒ 恢复后重复交接。
+
+▶ C1：词条完成已持久化，recordQuiz 之前中断
+
+▶ C2：recordQuiz 成功后、保存 srs_reported 前中断（已复现的重复交接风险）
+
+▶ C2b：重复交接在最坏情况下会连跳两级（new→apply→mastered）
+    ⇒ 一次崩溃窗口可以让一个词跳过「应用层」直接进「已掌握」。
+
+▶ C3：SRS 已更新，但标记写入失败（与 C2 同一窗口，不同触发路径）
+    ⇒ C3 的结论：标记写失败时，重试必然重复 SRS 副作用；
+       当前结构无法同时保证「不丢」和「不重」。
+
+▶ C4：恢复时已标记词不重复调度、未标记词进入待处理
+
+▶ 缺陷回归：最后一个词交接失败时，会话结束后必须仍能补交
+
+▶ 策略记录：已放弃会话的未交接词也会补交（D2 义务不随放弃消失）
+    ⇒ 当前策略：D2 的义务在词条转 COMPLETED 时产生，不因放弃而消失。
+       若产品侧认为「放弃=丢弃积分」，改 repairSrsHandoff 的过滤条件即可。
+
+▶ 批量清扫：本次交接会顺带补上更早遗留的未标记词
+
+────────────────────────────────────────────────────────
+✅ SRS 交接与故障恢复测试全部通过：101 项断言
+  ✓ storage 走真实 Dexie 驱动（未降级内存）  dexie
+
+场景 1 · /review 入口与路由
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+  ✓ Review 页渲染出「单词默写」卡片
+  ✓ 入口卡片带模式切换（随机/最近新增/易错词）
+  ✓ 入口卡片显示沿用设置的每轮词数
+  ✓ 入口说明连对目标
+  ✓ 找到「开始默写」按钮
+  ✓ 点击后路由切到 /spelling  /spelling
+  ✓ mode 通过 query 传递  ?mode=recent
+
+场景 2 · 出题来自持久化队列
+  ✓ 自动创建会话并进入练习
+  ✓ 库里只有一份进行中会话  实际 1
+  ✓ 持久化队列有 3 个词（batchSize=3）  实际 3
+  ✓ current_position 指向队列首位
+  ✓ 页面不直接泄露任何答案
+  ✓ 展示中文释义  n. 雏菊
+  ✓ 展示首字母与长度提示
+
+场景 3 · 提交反馈与判分
+[dataClient] 拉取失败（已重试 1 次）/data/linguabase/v1/catalog.json TypeError: Failed to parse URL from /data/linguabase/v1/catalog.json
+    at node:internal/deps/undici/undici:14976:13
+    at async runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:19)
+    at async Object.getCatalog (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:227:15) {
+  [cause]: TypeError: Invalid URL
+      at new URL (node:internal/url:818:25)
+      at new Request (node:internal/deps/undici/undici:9804:25)
+      at fetch (node:internal/deps/undici/undici:10533:25)
+      at fetch (node:internal/deps/undici/undici:14974:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
+      at runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:25)
+      at async Object.getCatalog (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:227:15) {
+    code: 'ERR_INVALID_URL',
+    input: '/data/linguabase/v1/catalog.json'
+  }
+}
+[dataClient] 数据不可用 /data/linguabase/v1/catalog.json
+  ✓ 错误字母给出否定反馈
+  ✓ 错误字母落 1 条错词事件  实际 1
+  ✓ 错误字母不增加 wrong_attempts  实际 0
+  ✓ 错误字母不增加 total_attempts  实际 0
+  ✓ 错误字母使连续正确归零
+  ✓ 错误字母后输入进度归零
+  ✓ 错误字母不推进队列
+  ✓ 非法字符有明确提示
+  ✓ 非法字符不产生错词事件  实际 1
+  ✓ 非法字符不计入 total_attempts  实际 0
+  ✓ 非法字符不重置连续正确
+  ✓ 非法字符不推进队列
+  ✓ 完整拼对 3 次后状态 COMPLETED
+  ✓ 连续正确计数为 3
+  ✓ 完整答题提交次数为 3  实际 3
+  ✓ 完成后队列推进  实际 1
+  ✓ UI 显示达标切词反馈
+  ✓ 找到「跳过」按钮
+  ✓ 跳过词状态为 SKIPPED
+  ✓ 跳过后队列推进  实际 2
+  ✓ 跳过不计入提交次数
+  ✓ 会话结束后自动跳 /spelling-result  /spelling-result
+  ✓ 结果页带会话 id
+Warning: An update to SpellingResult inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SpellingResult (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\pages\SpellingResult.tsx:37:20)
+    at RenderedRoute (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\hooks.tsx:658:26)
+    at Routes (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:512:3)
+    at Router (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:421:13)
+    at MemoryRouter (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:225:3)
+Warning: An update to SpellingResult inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SpellingResult (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\pages\SpellingResult.tsx:37:20)
+    at RenderedRoute (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\hooks.tsx:658:26)
+    at Routes (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:512:3)
+    at Router (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:421:13)
+    at MemoryRouter (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:225:3)
+Warning: An update to SpellingResult inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SpellingResult (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\pages\SpellingResult.tsx:37:20)
+    at RenderedRoute (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\hooks.tsx:658:26)
+    at Routes (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:512:3)
+    at Router (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:421:13)
+    at MemoryRouter (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:225:3)
+  ✓ 库里会话状态 SESSION_COMPLETED
+  ✓ 完成 2 个 / 跳过 1 个
+
+场景 4 · 刷新后恢复会话
+  ✓ 刷新后恢复同一会话（没有新开一份）
+  ✓ 刷新后连对进度保留
+  ✓ 刷新后出题位置不变
+  ✓ UI 显示连对进度  0/3第 1 个 · 最近新增连对 1/3n. 卷心菜_______· 7 个字母 · 第 1 个逐字母拼写 跳过逐字母判定：每个错误字母记 1 条错词事件，不算一次答题提交连对 3 次记为掌握，并计入生词本复习排程
+  ✓ 输入框可用
+  ✓ 跨刷新连对累计到 3 → COMPLETED
+
+场景 5 · 暂停 / 继续 / 放弃
+  ✓ 找到暂停按钮（带 aria-label）
+  ✓ 暂停后显示暂停态
+  ✓ 库里状态为 PAUSED
+  ✓ 暂停后不算进行中会话
+  ✓ 刷新后仍识别为暂停态
+  ✓ 找到「继续默写」按钮
+  ✓ 继续后回到练习态
+  ✓ 库里回到 IN_PROGRESS
+  ✓ 暂停态有「放弃本轮」
+  ✓ 放弃后回到 /review  /review
+  ✓ 库里会话为 ABANDONED
+
+场景 6 · 多标签页冲突提示
+  ✓ 检测到冲突并提示
+  ✓ 提示明确说不保证互斥
+  ✓ 列出两份会话供选择
+  ✓ 不自动替用户裁决（没有直接进入练习）
+  ✓ 列表按开始时间倒序  conflict-b,conflict-a
+  ✓ 找到「保留选中的，放弃其余」
+  ✓ 裁决后进入练习
+  ✓ 保留下来的正是选中的那份
+  ✓ 另一份被放弃
+  ✓ UI 恢复的就是选中的那份  conflict-a
+
+场景 7 · SRS 交接待重试状态
+  ✓ 交接失败时提示待重试
+  ✓ 不显示任何"已同步"类不实状态
+  ✓ 词条仍为 COMPLETED
+  ✓ srs_reported 仍为 false（待重试）
+  ✓ 没有伪造 SRS 记录  实际 0
+  ✓ 重新进入页面后补交成功
+  ✓ 补交后恰好 1 条 spelling 记录  实际 1
+  ✓ 补交成功后待重试提示消失
+
+场景 8 · 逐字母快速连打与幂等重放不重复计数
+  ✓ 快速连打整词只计 1 次完整提交  实际 1
+  ✓ 快速连打连续正确只 +1  实际 1
+  ✓ 快速连打不产生错词事件
+  ✓ 队列没有重复推进
+  ✓ 拼完后输入进度归零
+  ✓ processed_letters 恰好为单词长度  实际 5
+  ✓ 同一 request_id 重放 3 次只落 1 条事件  实际 1
+  ✓ 重放不增加完整答题提交次数  实际 1
+  ✓ 重放后连续正确归零
+
+场景 9 · 结果页
+  ✓ 结果页渲染完成数
+  ✓ 展示逐词明细（3 行）
+  ✓ 明细含失效词条的原因
+  ✓ 展示正确率（4 次提交 3 对 = 75%）
+  ✓ 展示用时
+  ✓ 刷新后结果一致
+  ✓ 会话不存在时给出提示
+  ✓ 提供返回入口
+  ✓ 缺少 id 也不伪造结果
+
+场景 10 · 空池空态
+  ✓ 没有可默写词时走空态
+  ✓ 空态不出现输入框
+  ✓ 没有落一份空会话占位
+
+────────────────────────────────────────────────────────
+✅ 单词默写前端验收全部通过：96 项断言
+未覆盖声明：jsdom 无布局引擎——重叠/溢出/遮挡/视口自适应未经渲染验证；
+导航以「URL 变化 + 目标组件出现」验证，未 mock navigate。
+
+▶ 1. 新建会话：完整队列顺序落库
+
+▶ 2. 学一个词 → 退出 → 再进入：恢复位置（Bug 1 核心）
+
+▶ 3. 学多个词 → 退出 → 再进入：从中断位置继续
+
+▶ 4. 已完成词不重复计数（反复横跳）
+
+▶ 5. 边界：到头 / 到底不越界、不空白
+
+▶ 6. 新建时跳过已在生词本的词
+
+▶ 7. 词包换版：剔除失效 id / 追加新词 / 位置锚定
+
+▶ 8. 重学：唯一清进度的路径
+
+▶ 9. 分组口径：组内最后一张 / 最后一组
+
+▶ 10. 计数一致：已完成 + 剩余 = 队列长度
+
+▶ 11. 队列内容回查：词与释义一起回来（不是只有词）
+
+▶ 12. 兼容：老库无会话 / 脏数据不影响既有数据
+
+▶ 13. buildQueue 去重与空表
+
+────────────────────────────────────────────────────
+通过 84 项，失败 0 项
+
+▶ 1. 中文辅助开启
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+  ✓ 释义渲染出来（2 个词性组各一行）  分组 2 行 2
+  ✓ 🔴 同词性多义项在同一行、用中文分号连接（不拆 li）  行0=在...旁边；通过（某种方式）；由（某人完成）；到（某时）之前 行1=经过；附近；搁置 li=0
+  ✓ 保留括号与特殊符号（如「通过（某种方式）」）
+  ✓ 首义项与末义项都在、未丢失
+  ✓ 例句中文翻译可见
+  ✓ 助记提示可见
+  ✓ 词根词缀保留
+  ✓ 词源保留
+
+▶ 2. 中文辅助关闭（核心释义仍可见）
+  ✓ 🔴 核心中文释义**仍然显示**（不因开关消失）  行 2 li=0
+  ✓ 同词性解析仍连在同一行、用 ； 连接  行0=在...旁边；通过（某种方式）；由（某人完成）；到（某时）之前
+  ✓ 词性分组仍在  分组 2
+  ✓ 不再出现「已按设置隐藏中文释义」这类空提示
+  ✓ 例句中文翻译常驻显示（不受开关控制）
+  ✓ 例句英文仍在
+  ✓ 例句标题始终为「双语例句」
+  ✓ 助记提示收起（辅助项）
+  ✓ 词根词缀 / 词源不受开关影响
+
+▶ 3. 无释义数据
+  ✓ 显示明确提示而不是空白  该词暂未收录释义。
+  ✓ 提示文案为「该词暂未收录释义。」
+
+▶ 4. 开关恢复后回到双语
+  ✓ 例句中文翻译回来了
+  ✓ 核心释义依旧按词性分 2 行、用 ； 连接
+
+▶ 5. 例句单词可点查词
+  ✓ 例句英文拆成可点单词按钮（5 词 + 标点非按钮）  按钮数=5
+  ✓ 标点 / 空格不可点（句点 "." 不是按钮）
+  ✓ 点击单词弹出查词小窗（含「查看详情」入口）
+  ✓ 点外部遮罩关闭弹窗
+
+────────────────────────────────────────────────────
+通过 25 项，失败 0 项
+[dataClient] 拉取失败（已重试 1 次）/data/linguabase/v1/index.json TypeError: Failed to parse URL from /data/linguabase/v1/index.json
+    at node:internal/deps/undici/undici:14976:13
+    at async runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:19)
+    at async Object.searchAllWords (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:202:17)
+    at async loadWordDetail (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:455:16)
+    at async lookupWordVariants (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:475:17) {
+  [cause]: TypeError: Invalid URL
+      at new URL (node:internal/url:818:25)
+      at new Request (node:internal/deps/undici/undici:9804:25)
+      at fetch (node:internal/deps/undici/undici:10533:25)
+      at fetch (node:internal/deps/undici/undici:14974:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
+      at runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:25)
+      at async Object.searchAllWords (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:202:17)
+      at async loadWordDetail (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:455:16)
+      at async lookupWordVariants (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:475:17) {
+    code: 'ERR_INVALID_URL',
+    input: '/data/linguabase/v1/index.json'
+  }
+}
+[dataClient] 数据不可用 /data/linguabase/v1/index.json
+[dataClient] 拉取失败（已重试 1 次）/data/linguabase/v1/index.json TypeError: Failed to parse URL from /data/linguabase/v1/index.json
+    at node:internal/deps/undici/undici:14976:13
+    at async runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:19)
+    at async <anonymous> (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:423:19)
+    at async lookupWordVariants (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:478:13) {
+  [cause]: TypeError: Invalid URL
+      at new URL (node:internal/url:818:25)
+      at new Request (node:internal/deps/undici/undici:9804:25)
+      at fetch (node:internal/deps/undici/undici:10533:25)
+      at fetch (node:internal/deps/undici/undici:14974:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
+      at runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:25)
+      at async <anonymous> (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:423:19)
+      at async lookupWordVariants (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:478:13) {
+    code: 'ERR_INVALID_URL',
+    input: '/data/linguabase/v1/index.json'
+  }
+}
+[dataClient] 数据不可用 /data/linguabase/v1/index.json
+▶ 存储可靠性 / 跨标签锁 / 错词事件 / U16 恢复链
+
+▶ 1 · 存储原语（幂等插入 / 并发 CAS / abort / skip / 双驱动）
+  ✓ insertIfAbsent 首次写入返回 true
+  ✓ insertIfAbsent 主键冲突返回 false（不覆盖、不增行）
+  ✓ 事件表仍只有 1 行（期望 1，实际 1）
+  ✓ memory 驱动 insertIfAbsent 首次 true
+  ✓ memory 驱动 insertIfAbsent 重复 false（双驱动一致）
+  ✓ 两个并发 CAS 串行化，结果 = 2（不是 last-writer-wins）（期望 2，实际 2）
+  ✓ memory 驱动并发 CAS 同样收敛到 2（期望 2，实际 2）
+  ✓ abort 抛 AtomicAbortError
+  ✓ abort 事务回滚，一行未写（期望 2，实际 2）
+  ✓ skip 返回 committed=false（期望 false，实际 false）
+  ✓ skip 不写回（期望 2，实际 2）
+
+▶ 2 · L2 跨标签单写者锁（C33-C38）
+  ✓ A 取锁成功，初始 lock_epoch=0（期望 0，实际 0）
+  ✓ 会话记录持锁标签 A（期望 tab-A，实际 tab-A）
+  ✓ B 在租约未过期时取锁被拒（实际 TAB_LOCK_LOST）
+  ✓ B 显式接管，fencing token epoch 恰 +1（期望 1，实际 1）
+  ✓ 接管后持锁标签为 B（期望 tab-B，实际 tab-B）
+  ✓ epoch 原子递增并落库（期望 1，实际 1）
+  ✓ 未获用户确认不得接管（实际 TAKEOVER_NOT_CONFIRMED）
+  ✓ 旧持有者 A 的写前校验被拒（实际 TAB_LOCK_LOST）
+  ✓ A 的 release 不写回（期望 false，实际 false）
+  ✓ 旧标签没能清掉新锁（期望 tab-B，实际 tab-B）
+  ✓ release 未扰动 epoch（期望 1，实际 1）
+  ✓ 旧持有者的事件写入被拒（九路径之一）（实际 TAB_LOCK_LOST）
+  ✓ 拒绝写入后事件表零新增（期望 0，实际 0）
+  ✓ B 心跳续期写入 lock_held_at（期望 1700000003000，实际 1700000003000）
+  ✓ 租约过期允许强制接管
+  ✓ 强制接管同样 epoch+1（期望 6，实际 6）
+  ✓ 强制接管后锁归属 B（期望 tab-B，实际 tab-B）
+  ✓ 时钟回拨不判过期、不误接管（实际 TAB_LOCK_LOST）
+  ✓ 失锁标签心跳被拒（实际 TAB_LOCK_LOST）
+  ✓ 心跳失锁后本地进入只读降级
+  ✓ 降级态下所有写入请求被拒（不静默失败）（实际 LOCK_UNAVAILABLE）
+
+▶ 3 · 错词事件链（T-A/T-B/T-C、S1/S2、stale、C57/C58）
+  ✓ T-A 事件首次落盘
+  ✓ 事件行冻结写入时的 tab_id（期望 tab-A，实际 tab-A）
+  ✓ 事件行冻结写入时的 lock_epoch（期望 0，实际 0）
+  ✓ T-A 重放幂等，不增行
+  ✓ 事件表仍只有 1 行（期望 1，实际 1）
+  ✓ 同事务：凭证与事件一起落库（S1 窗口关闭）
+  ✓ 同事务：事件状态直接为 settled（期望 settled，实际 settled）
+  ✓ 生产路径不产生 pending，drain 无需重放（U11/U1 消除）（期望 0，实际 0）
+  ✓ 重复 drain 无 pending，不重复重放（期望 0，实际 0）
+  ✓ 直接重复 settle 返回 already_settled（期望 already_settled，实际 already_settled）
+  ✓ 幂等结算不重复写凭证（期望 1，实际 1）
+  ✓ S2 查凭证跳过 T-B（期望 1，实际 1）
+  ✓ S2 不重复归零/重复结算（期望 0，实际 0）
+  ✓ S2 补 T-C 状态标记（期望 settled，实际 settled）
+  ✓ S2 凭证数不变（期望 1，实际 1）
+  ✓ stale 事件判 settled_skipped（期望 1，实际 1）
+  ✓ stale 事件状态已终结（期望 settled_skipped，实际 settled_skipped）
+  ✓ stale 原因码为 stale_epoch（期望 stale_epoch，实际 stale_epoch）
+  ✓ stale 写带结论的凭证，杜绝永久 pending（期望 stale，实际 stale）
+  ✓ P0：旧代次事件分类为 SETTLED_STALE（期望 SETTLED_STALE，实际 SETTLED_STALE）
+  ✓ P0：旧代次事件不计入活动错词事件数（期望 0，实际 0）
+  ✓ P0：旧代次事件仍计入历史错误事件行数（期望 1，实际 1）
+  ✓ stale 事件不再无限重放（期望 0，实际 0）
+
+▶ 4 · U16 升级中断恢复（C60/C62/S5）
+  ✓ versionchange 后内存态全部失效
+  ✓ 重新 open ≠ 已持锁：未走恢复链前写入被拒（实际 LOCK_UNAVAILABLE）
+  ✓ S5 降级态下 drain 不抢锁、页面保持只读（期望 1，实际 1）
+  ✓ 事件保留 pending，不丢不假报成功（期望 pending，实际 pending）
+  ✓ 恢复链重新读取 lock_epoch，未沿用内存旧值（期望 7，实际 7）
+  ✓ 恢复链完成后解除只读降级
+  ✓ 恢复链 drain 补结算成功（期望 1，实际 1）
+  ✓ 注入「跳过 acquireLock」应被测试判定为失败（实际 TAB_LOCK_LOST）
+  ✓ 被拒结算的事件保持 pending（期望 pending，实际 pending）
+
+▶ 5 · V1 生产写路径真实接入（不是只在测试里存在）
+  ✓ 错误提交判定为 wrong（期望 wrong，实际 wrong）
+  ✓ 生产写路径落 1 条错词事件（期望 1，实际 1）
+  ✓ T-C 状态标记完成（期望 settled，实际 settled）
+  ✓ 事件行带当前标签 id（期望 91190f76-9a84-4158-84b2-f68f0aa4bd83，实际 91190f76-9a84-4158-84b2-f68f0aa4bd83）
+  ✓ 事件行冻结当前代次（期望 0，实际 0）
+  ✓ T-B 凭证与 V1 状态在同一次会话写入内落库
+  ✓ 同 request_id 重放不产生第二行（期望 1，实际 1）
+  ✓ 重放不重复结算（期望 1，实际 1）
+  ✓ 正确提交不写错词事件（期望 1，实际 1）
+  ✓ 正常路径无遗留 pending 事件（期望 0，实际 0）
+
+▶ 6 · v14 行内字段不改 schema
+  ✓ 新增行内字段可回读（无版本升级）（期望 any-tab，实际 any-tab）
+  ✓ lock_epoch 行内字段可回读（期望 9，实际 9）
+  ✓ 原因码可回读（期望 stale_epoch，实际 stale_epoch）
+  ✓ status 索引仍可用（期望 1，实际 1）
+  ✓ session_id 索引仍可用（期望 1，实际 1）
+
+▶ 7 · U11/U1 跨表竞态（C09/T29 窗口：接管插在写前校验与落盘之间）
+  ✓ C09/T29：接管插在写前校验与落盘之间时，旧标签零事件落盘（U1 消除）
+  ✓ 接管方持锁（期望 tab-rival，实际 tab-rival）
+  ✓ fencing token 恰 +1（期望 1，实际 1）
+  ✓ 旧标签未写入结算凭证（事件与凭证必须同事务）
+  ✓ 旧标签提交被明确拒绝（不静默丢弃、不假报成功）
+  ✓ 存储层提供跨表原子批事务 atomicBatch
+
+▶ 8 · atomicBatch 原子性、并发、abort、严格锁校验、重启 drain
+  ✓ commit=true 事务提交
+  ✓ 提交后事件表 1 行（期望 1，实际 1）
+  ✓ 提交后会话写入生效（期望 99，实际 99）
+  ✓ commit=false 返回 committed=false（期望 false，实际 false）
+  ✓ commit=false 事件表无新增（两表同事务回滚）（期望 1，实际 1）
+  ✓ commit=false 会话写入被回滚（期望 99，实际 99）
+  ✓ scope 抛错原样冒泡
+  ✓ 事务 abort 事件表无新增（期望 1，实际 1）
+  ✓ 事务 abort 会话写入被回滚（期望 99，实际 99）
+  ✓ memory 驱动 commit/rollback 语义一致
+  ✓ memory 驱动回滚后会话值不变（期望 7，实际 7）
+  ✓ 同事务内重复主键：首次 true、再次 false
+  ✓ 重复主键不增行（期望 1，实际 1）
+  ✓ 生产路径落了 evt:dup-req 事件
+  ✓ 手工行 + 生产行，重放不增第三行（期望 2，实际 2）
+  ✓ 重放不重复写凭证（期望 1，实际 1）
+  ✓ 两个并发批事务都提交（rw 事务串行化）
+  ✓ 并发两行事件都落盘，无覆盖（期望 2，实际 2）
+  ✓ 并发两条凭证都保留（期望 2，实际 2）
+  ✓ 租约过期也不静默接管，旧标签写路径被拒
+  ✓ 旧标签未偷偷递增 epoch（期望 3，实际 3）
+  ✓ 被拒提交零事件落盘（期望 0，实际 0）
+  ✓ 显式 acquireSessionLock 仍可租约过期接管
+  ✓ versionchange 降级后提交被 LOCK_UNAVAILABLE 拒绝
+  ✓ 降级态零事件落盘（期望 0，实际 0）
+  ✓ 重启恢复链重读 epoch（期望 0，实际 0）
+  ✓ 历史 pending 被扫到（期望 1，实际 1）
+  ✓ 补写凭证恰一次（期望 1，实际 1）
+  ✓ 历史事件凭证已补
+  ✓ 历史事件状态收敛（期望 settled，实际 settled）
+  ✓ 重复结算幂等（期望 already_settled，实际 already_settled）
+  ✓ 收敛后不再重放（期望 0，实际 0）
+  ✓ 旧标签独立事件 API 被拒（实际 TAB_LOCK_LOST）
+  ✓ 被拒后事件表无新增（期望 1，实际 1）
+  ✓ 旧标签结算被拒（实际 TAB_LOCK_LOST）
+  ✓ 被拒结算的事件保留 pending（不丢）（期望 pending，实际 pending）
+
+────────────────────────────────────────────────────────────
+✅ 可靠性回归全部通过：121 项断言
+▶ 单词默写 V2 · P0 正确性链路 / C47–C53 · T70–T76
+
+▶ C47/T70 · 旧 epoch / B 接管 / T-B 未跑 → PENDING_STALE（0/1）
+  ✓ C47 分类 = PENDING_STALE（期望 PENDING_STALE，实际 PENDING_STALE）
+  ✓ C47 活动错词事件数 = 0（旧代次不污染）（期望 0，实际 0）
+  ✓ C47 历史错误事件行数 = 1（期望 1，实际 1）
+  ✓ T-B 后判 settled_skipped（期望 settled_skipped，实际 settled_skipped）
+  ✓ 凭证写带结论的 stale（期望 stale，实际 stale）
+  ✓ T-B 后活动错词仍为 0（期望 0，实际 0）
+  ✓ T-B 后历史行数仍为 1（期望 1，实际 1）
+
+▶ C48/T71 · 凭证缺失 ∧ epoch 相等 → PENDING_CURRENT（1/1）
+  ✓ C48 分类 = PENDING_CURRENT（期望 PENDING_CURRENT，实际 PENDING_CURRENT）
+  ✓ C48 活动错词事件数 = 1（期望 1，实际 1）
+  ✓ C48 历史错误事件行数 = 1（期望 1，实际 1）
+  ✓ T-B 成功（期望 settled，实际 settled）
+  ✓ T-B 后仍 1（SETTLED_ZEROED）（期望 1，实际 1）
+  ✓ T-B 后 total 恒 1（期望 1，实际 1）
+
+▶ C49/T72 · R1–R6：T-B 未跑/失败、T-C 失败/超前、刷新、重复 drain
+  ✓ R3 刷新前 active=1（期望 1，实际 1）
+  ✓ R4 status 被回退为 pending（期望 pending，实际 pending）
+  ✓ R4 分类不受 status 影响（期望 SETTLED_ZEROED，实际 SETTLED_ZEROED）
+  ✓ R4 active 不变（期望 1，实际 1）
+  ✓ R5 凭证缺失时不被 status 超前欺骗（期望 PENDING_CURRENT，实际 PENDING_CURRENT）
+  ✓ R6 首次 drain 结算 1 条（期望 1，实际 1）
+  ✓ R6 重复 drain 无 pending（期望 0，实际 0）
+  ✓ R6 凭证数恒 1（期望 1，实际 1）
+  ✓ R6 两轮 drain 均收敛
+
+▶ C50/T73 · 接管递增 epoch → 1/1 → 0/1，SETTLED_* 不变
+  ✓ 先结算一条（期望 settled，实际 settled）
+  ✓ 接管前 2/2（期望 2，实际 2）
+  ✓ 凭证缺失事件被重分类，不再 PENDING_CURRENT（期望 0，实际 0）
+  ✓ 凭证缺失事件 → PENDING_STALE（期望 1，实际 1）
+  ✓ 已 SETTLED_ZEROED 事件不受接管影响（凭证优先）（期望 1，实际 1）
+  ✓ total 恒为行数（期望 2，实际 2）
+
+▶ C51/T74 · 凭证优先于代次；缺 lock_epoch → UNCLASSIFIABLE
+  ✓ 旧代次但凭证 zeroed → 计入（凭证优先）（期望 SETTLED_ZEROED，实际 SETTLED_ZEROED）
+  ✓ 凭证 stale → 不计入（期望 SETTLED_STALE，实际 SETTLED_STALE）
+  ✓ 缺 lock_epoch → 保守不可分类（期望 UNCLASSIFIABLE，实际 UNCLASSIFIABLE）
+  ✓ 仅 zeroed 计入活动错词（期望 1，实际 1）
+  ✓ 三行全计入历史行数（期望 3，实际 3）
+  ✓ 异常计数可提示用户（期望 true，实际 true）
+
+▶ C52/T75 · COVERED 覆盖一切其它分类，total 不变
+  ✓ 覆盖前 2 条活动错词（期望 2，实际 2）
+  ✓ C52 三类全部被 covered 移出 active（期望 0，实际 0）
+  ✓ COVERED 计数 = 3（期望 3，实际 3）
+  ✓ C52 total 恒 3，不物理删行（期望 3，实际 3）
+  ✓ 并集幂等，不扩大覆盖（期望 0，实际 0）
+
+▶ C53/T76 · 缺 session / S=null / 缺 owner → 不抛错、不编造数字
+  ✓ 脏数据不抛错、不白屏
+  ✓ 会话不存在 → ORPHAN（期望 1，实际 1）
+  ✓ 缺代次 → UNCLASSIFIABLE（期望 1，实际 1）
+  ✓ 脏数据不计入活动错词（期望 0，实际 0）
+  ✓ 脏数据仍计入历史行数（期望 2，实际 2）
+  ✓ S=null 明确判 ORPHAN（期望 ORPHAN，实际 ORPHAN）
+
+▶ 统计口径 · active ⊆ total、指标分别标注、文案不出现「拼错次数」
+  ✓ active 恒为 total 子集
+  ✓ total 恒等于行数，与 status 无关（期望 3，实际 3）
+  ✓ 仅两类计入 active（期望 2，实际 2）
+  ✓ 活动指标文案禁用「拼错次数」
+  ✓ 历史指标文案禁用「拼错次数」
+  ✓ 两个指标分别标注、名称不同
+  ✓ 口径说明明确否定主观次数
+
+▶ 同一 event_id 重试 · 不产生第二行、不重复写凭证、不覆盖已有结论
+  ✓ 首次 true，重复两次均 false
+  ✓ 事件表恒 1 行（期望 1，实际 1）
+  ✓ 凭证恒 1 条（期望 1，实际 1）
+  ✓ 重复结算幂等（期望 already_settled，实际 already_settled）
+  ✓ 重放不覆盖已有 stale 结论（期望 stale，实际 stale）
+
+▶ 不同 reset 并发 · 两行各自落盘、covered 并集幂等、无 lost update
+  ✓ 两个不同主键的 reset 行都落盘
+  ✓ 集合并集天然幂等，不扩大（期望 2，实际 2）
+  ✓ E1/E2 被覆盖（期望 2，实际 2）
+  ✓ E3 未覆盖，保留为活动错词（期望 1，实际 1）
+  ✓ total 不受 reset 影响（期望 3，实际 3）
+
+▶ error/reset 事务竞争 · 两种全序各自自洽，不读 occurred_at
+  ✓ error 与 reset 两行都落盘，无 ConstraintError 泄漏
+  ✓ reset 快照含 E → 不计入（期望 0，实际 0）
+  ✓ reset 快照不含 E → 保留（期望 1，实际 1）
+  ✓ total 与全序无关（期望 1，实际 1）
+  ✓ occurred_at 不参与分类（期望 PENDING_CURRENT，实际 PENDING_CURRENT）
+
+▶ Dexie / memory 双驱动 · classify 与聚合结果一致
+  ✓ 两驱动 active 一致（期望 2，实际 2）
+  ✓ 两驱动 total 一致（期望 3，实际 3）
+  ✓ 两驱动 ORPHAN 一致（期望 1，实际 1）
+
+▶ takeover 与旧标签 in-flight 写入 · 严格校验拒绝、零落盘
+  ✓ 旧标签写入被明确拒绝（期望 1，实际 1）
+  ✓ 旧标签零事件落盘（期望 0，实际 0）
+  ✓ 接管方仍持锁（期望 tab-B，实际 tab-B）
+  ✓ fencing token 恰 +1（期望 1，实际 1）
+  ✓ 租约过期也不在写路径静默接管（期望 1，实际 1）
+  ✓ 旧标签未偷偷递增 epoch（期望 1，实际 1）
+
+▶ T-A 已提交 / T-B 未提交 · 启动恢复链幂等补结算
+  ✓ T-B 未跑时 active 已正确 = 1（不等待结算）（期望 1，实际 1）
+  ✓ U16 恢复链收敛
+  ✓ drain 恰补结算 1 条（期望 1，实际 1）
+  ✓ 凭证已补（期望 true，实际 true）
+  ✓ 事件状态收敛（期望 settled，实际 settled）
+  ✓ 重复 drain 无活可干（期望 0，实际 0）
+  ✓ 重复 drain 仍收敛
+  ✓ 恢复后 active 不变（期望 1，实际 1）
+  ✓ 恢复后 total 不变（期望 1，实际 1）
+
+▶ P0 第 5 条 · 旧代次事件在 T-B 未执行/失败/崩溃/刷新时不污染活动错词本
+  ✓ 结算前（T-B 未执行）活动错词 = 0（期望 0，实际 0）
+  ✓ 结算前历史行数 = 1（期望 1，实际 1）
+  ✓ 结算后（settled_skipped）活动错词仍 = 0（期望 0，实际 0）
+  ✓ 结算后历史行数仍 = 1（期望 1，实际 1）
+  ✓ stale 凭证不被当 zeroed（期望 stale，实际 stale）
+
+▶ P0 第 1 条 · owner / session / tab / lock_epoch 写入校验
+  ✓ 同源事件通过校验（期望 true，实际 true）
+  ✓ 跨 owner 被拒（期望 OWNER_MISMATCH，实际 OWNER_MISMATCH）
+  ✓ 跨会话被拒（期望 SESSION_MISMATCH，实际 SESSION_MISMATCH）
+  ✓ 错标签被拒（期望 TAB_MISMATCH，实际 TAB_MISMATCH）
+  ✓ 代次冻结错误被拒（期望 EPOCH_MISMATCH，实际 EPOCH_MISMATCH）
+  ✓ 空 event_id 被拒（期望 EVENT_ID_REQUIRED，实际 EVENT_ID_REQUIRED）
+  ✓ 越权 owner 被会话 owner 覆盖，不落跨账号数据（期望 guest，实际 guest）
+  ✓ 事件冻结事务内重读到的 lock_epoch（期望 4，实际 4）
+
+▶ drain 重试与收敛 · 失败保留 pending、被他标签持锁不抢不丢
+  ✓ 他人持锁 → sessionsSkipped=1（期望 1，实际 1）
+  ✓ 事件保留 pending，不抢不丢（期望 pending，实际 pending）
+  ✓ 存在未结算事件时判未收敛（输入闸门不得开启）
+  ✓ pendingRemaining 如实为 1（期望 1，实际 1）
+  ✓ 无 pending 时收敛
+  ✓ 空库 scanned=0（期望 0，实际 0）
+  ✓ 空库无需重试（期望 0，实际 0）
+
+▶ 只读统计入口 · owner 隔离、reset 覆盖、读取不编造
+  ✓ 其它 owner 的行不混入统计（期望 1，实际 1）
+  ✓ reset 快照生效（期望 1，实际 1）
+  ✓ 被覆盖的行不计入活动错词（期望 0，实际 0）
+  ✓ 会话不存在时返回 0，不编造数字（期望 0，实际 0）
+
+▶ 分类优先级完整性 · 7 类全覆盖且 active 仅 2 类
+  ✓ 优先级用例 c → COVERED（期望 COVERED，实际 COVERED）
+  ✓ 优先级用例 z → SETTLED_ZEROED（期望 SETTLED_ZEROED，实际 SETTLED_ZEROED）
+  ✓ 优先级用例 st → SETTLED_STALE（期望 SETTLED_STALE，实际 SETTLED_STALE）
+  ✓ 优先级用例 p → PENDING_CURRENT（期望 PENDING_CURRENT，实际 PENDING_CURRENT）
+  ✓ 优先级用例 q → PENDING_STALE（期望 PENDING_STALE，实际 PENDING_STALE）
+  ✓ 优先级用例 o → ORPHAN（期望 ORPHAN，实际 ORPHAN）
+  ✓ 优先级用例 d → UNCLASSIFIABLE（期望 UNCLASSIFIABLE，实际 UNCLASSIFIABLE）
+  ✓ SETTLED_STALE 不计入 active（期望 false，实际 false）
+  ✓ PENDING_STALE 不计入 active（期望 false，实际 false）
+
+────────────────────────────────────────────────────────────────
+✅ V2 P0 正确性链路全部通过：118 项断言
+▶ P1 U16 升级中断恢复 · 五步链自动化验证
+
+▶ S1 · versionchange 后丢弃内存锁状态、写路径全拒、输入闸门关闭
+  ✓ 旧内存锁状态已作废
+  ✓ 事务内写前校验拒绝（不假设 close 后事务仍可继续）
+  ✓ 降级态结算被明确拒绝（期望 1，实际 1）
+  ✓ 事件保留 pending，不丢不假报成功（期望 pending，实际 pending）
+  ✓ 零新增落盘（期望 1，实际 1）
+
+▶ S2 · 重新 open 不等于重新取得写锁
+  ✓ 未重新取锁直接结算被拒（期望 1，实际 1）
+  ✓ 事件仍为 pending，未被错误结算（期望 pending，实际 pending）
+  ✓ 完整五步链后收敛
+  ✓ 收敛后事件结算完成（期望 settled，实际 settled）
+
+▶ S3 · 五步链成功：重读 epoch / 重新取锁 / drain / 收敛
+  ✓ 重新读取到的 lock_epoch = 7，未沿用内存旧值（期望 7，实际 7）
+  ✓ 恢复链完成后解除只读降级
+  ✓ drain 恰补结算 1 条（期望 1，实际 1）
+  ✓ converged=true（输入闸门才允许开启）
+  ✓ pendingRemaining=0（期望 0，实际 0）
+  ✓ 凭证已补（期望 true，实际 true）
+  ✓ 状态收敛（期望 settled，实际 settled）
+
+▶ S4 · 他人持锁导致未收敛 → converged=false，输入保持禁用
+  ✓ 取锁失败时恢复链明确抛错，不假报恢复成功（期望 1，实际 1）
+  ✓ 事件保留 pending，不抢不丢（期望 pending，实际 pending）
+  ✓ drain 未收敛
+  ✓ 仍有 1 条未结算（期望 1，实际 1）
+
+▶ S5 · T-B 首次写库失败 → drain 有限重试后收敛
+  ✓ 发生 1 轮重试（期望 1，实际 1）
+  ✓ 重试后无残留失败（期望 0，实际 0）
+  ✓ 恰结算 1 条，不重复结算（期望 1，实际 1）
+  ✓ 重试后收敛
+  ✓ 事件表恒 1 行，不因重试增行（期望 1，实际 1）
+  ✓ 状态收敛（期望 settled，实际 settled）
+
+▶ S6 · 重复恢复链与重复 drain 幂等，不重复归零
+  ✓ 两次恢复链均收敛
+  ✓ 第二次无 pending 可扫（期望 0，实际 0）
+  ✓ 凭证数恒 1，未重复归零（期望 1，实际 1）
+  ✓ 事件行数恒 1（期望 1，实际 1）
+  ✓ 重复 drain 不再结算（期望 0，实际 0）
+  ✓ 重复 drain 不触发重试（期望 0，实际 0）
+
+▶ S7 · 边界：T-A 尚未持久化的事件不在 U16 保证范围（如实登记）
+  ✓ 恢复链本身收敛（库内无待办）
+  ✓ 未持久化事件不会被恢复链凭空造出来（期望 0，实际 0）
+  ✓ 登记：不宣称「升级中断绝对不丢事件」；该场景需 V2 状态机前置持久化，属未实现范围
+
+────────────────────────────────────────────────────────────────
+✅ U16 恢复链验证全部通过：35 项断言
+▶ 单词默写 V2 · 逐字母打字状态机回归
+
+▶ 规则 1/2/10 · 一个错误字母 = 一条错词事件（幂等 event_id）
+  ✓ 错误字母判 wrong（期望 wrong，实际 wrong）
+  ✓ 确实落了 1 条新事件（期望 true，实际 true）
+  ✓ 错误提示音已触发（期望 true，实际 true）
+  ✓ 事件表恰 1 行（期望 1，实际 1）
+  ✓ event_id 绑定 request_id（幂等键）（期望 evt:letter:r1，实际 evt:letter:r1）
+  ✓ 复用 v14 kind=wrong，未新增枚举 / stores（期望 wrong，实际 wrong）
+  ✓ 记录错误字母位置（期望 0，实际 0）
+  ✓ 记录输入字符（期望 z，实际 z）
+  ✓ 标记逐字母来源（期望 letter，实际 letter）
+  ✓ 事件同事务直接 settled（期望 settled，实际 settled）
+  ✓ 凭证同事务写入（期望 true，实际 true）
+
+▶ 规则 2 · 同一单词连续错两个字母 = 两条独立事件
+  ✓ 第一个错误字母（期望 wrong，实际 wrong）
+  ✓ 第二个错误字母（期望 wrong，实际 wrong）
+  ✓ 事件表恰 2 行（不是 1 行）（期望 2，实际 2）
+  ✓ 两个独立 event_id（期望 2，实际 2）
+  ✓ 错误提示音触发 2 次（每个错误字母 1 次）（期望 2，实际 2）
+  ✓ 错词本错误次数 = 2（期望 2，实际 2）
+
+▶ 规则 3 · 同词多次错误合并计数、更新最近错误时间
+  ✓ 同一单词合并成 1 条错词记录（不是 3 条）（期望 1，实际 1）
+  ✓ 记录归属正确（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ 词条快照来自事件行，未编造（期望 abandon，实际 abandon）
+  ✓ 错误次数 = 错误字母数 3（期望 3，实际 3）
+  ✓ 历史错误事件行数 = 3（期望 3，实际 3）
+  ✓ 最近错误时间取最大 occurred_at（仅展示）（期望 1700000000900，实际 1700000000900）
+  ✓ 错词本合计 total = 3（期望 3，实际 3）
+
+▶ 规则 3/9 · 不同单词错误互相隔离
+  ✓ 两个词各 1 条错词记录（期望 2，实际 2）
+  ✓ W1 错误次数 = 2（期望 2，实际 2）
+  ✓ W2 错误次数 = 1（未串词）（期望 1，实际 1）
+  ✓ 总行数 = 3（期望 3，实际 3）
+
+▶ 规则 10 · 同一 request_id 重试不重复计数、不重复播音
+  ✓ 首次落 1 行（期望 true，实际 true）
+  ✓ 重放不落第二行（期望 false，实际 false）
+  ✓ 再次重放仍不落行（期望 false，实际 false）
+  ✓ 事件表恒 1 行（期望 1，实际 1）
+  ✓ 重放不重复播放提示音（期望 1，实际 1）
+  ✓ 重放原样回放结果（期望 wrong，实际 wrong）
+  ✓ 错词次数恒 1（期望 1，实际 1）
+  ✓ 无遗留 pending 事件（期望 0，实际 0）
+  ✓ drain 收敛
+
+▶ 规则 5 · 错误后输入进度清零、从第一个字母重新开始
+  ✓ 第 1 个字母后前缀 = a（期望 a，实际 a）
+  ✓ 第 2 个字母后前缀 = ab（期望 ab，实际 ab）
+  ✓ 输入进度已持久化（期望 ab，实际 ab）
+  ✓ 错误后前缀归零（期望 ，实际 ）
+  ✓ 下一个待输入位置回到 0（期望 0，实际 0）
+  ✓ 归零状态已落库（刷新后不回退）（期望 ，实际 ）
+  ✓ 归零后确实从第一个字母重新开始（期望 a，实际 a）
+
+▶ 规则 6 · 错误字母使连续正确次数归零
+  ✓ 前置：连对 = 2（期望 2，实际 2）
+  ✓ 错误后连对归零（期望 0，实际 0）
+  ✓ 归零已落库（期望 0，实际 0）
+  ✓ 错误未增加完整答题提交次数（期望 0，实际 0）
+  ✓ 错误不产生 SRS 交接义务（期望 false，实际 false）
+
+▶ 规则 7/8/9 · 错误不污染 SRS / total_attempts / in_wrong_pool
+  ✓ total_attempts 未被错误字母增加（期望 0，实际 0）
+  ✓ correct_attempts 未变（期望 0，实际 0）
+  ✓ wrong_attempts 未变（错词本独立统计）（期望 0，实际 0）
+  ✓ reviewLog 无新增（SRS 未触发）（期望 0，实际 0）
+  ✓ VocabEntry 连对未变（期望 0，实际 0）
+  ✓ SRS 错题池未被错词事件污染（期望 false，实际 false）
+  ✓ SRS 步进未变（期望 0，实际 0）
+  ✓ 错词本独立记录 2 次错误（期望 2，实际 2）
+
+▶ 规则 4 · 错误提示音按错误字母逐个触发
+  ✓ 初始 0 次（期望 0，实际 0）
+  ✓ 正确字母不播音（期望 0，实际 0）
+  ✓ 第 1 个错误字母播音 1 次（期望 1，实际 1）
+  ✓ 第 2 个错误字母再播 1 次（期望 2，实际 2）
+  ✓ 提示音次数与错误事件数一致（期望 2，实际 2）
+
+▶ 规则 10 · 拼完整个词才算一次完整提交，达标才完成并切换
+  ✓ 第 1 个字母只是进度，未完成（期望 correct，实际 correct）
+  ✓ 单个字母不是完整答题提交（期望 false，实际 false）
+  ✓ 拼完整个词 = 一次完整答题提交（期望 true，实际 true）
+  ✓ 连对 = 1（目标 2，未完成）（期望 1，实际 1）
+  ✓ 未达标不完成（期望 IN_PROGRESS，实际 IN_PROGRESS）
+  ✓ 仍停在当前词（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ 完整答题提交次数 = 1（期望 1，实际 1）
+  ✓ 连对 = 2 达标（期望 2，实际 2）
+  ✓ 整词完成（期望 COMPLETED，实际 COMPLETED）
+  ✓ 触发切词（期望 word_completed，实际 word_completed）
+  ✓ 已切换到下一个词（期望 CET4:ability，实际 CET4:ability）
+  ✓ 整词达标产生 SRS 交接义务（非错误事件触发）（期望 true，实际 true）
+  ✓ 全程正确 → 0 条错词事件（期望 0，实际 0）
+
+▶ 规则 10 · Dexie / memory 双驱动状态机结果一致
+  ✓ 两驱动 4 次逐字母结果逐项一致（期望 [{"request_id":"j1","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j2","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"ab","letter_index":2,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j3","word_id":"CET4:abandon","at":1700000000000,"outcome":"wrong","typed_prefix":"","letter_index":0,"is_full_attempt":false,"srs_due":false,"error":{"event_id":"evt:letter:j3","word_id":"CET4:abandon","session_id":"s11","word_snapshot":"abandon","letter_index":2,"typed_char":"z","expected_char":"a","occurred_at":1700000000000},"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j4","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}}]，实际 [{"request_id":"j1","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j2","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"ab","letter_index":2,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j3","word_id":"CET4:abandon","at":1700000000000,"outcome":"wrong","typed_prefix":"","letter_index":0,"is_full_attempt":false,"srs_due":false,"error":{"event_id":"evt:letter:j3","word_id":"CET4:abandon","session_id":"s11","word_snapshot":"abandon","letter_index":2,"typed_char":"z","expected_char":"a","occurred_at":1700000000000},"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j4","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}}]）
+  ✓ 两驱动都判第 3 个字母为错误（期望 wrong，实际 wrong）
+  ✓ 两驱动错误后都从第一个字母重新开始（期望 a，实际 a）
+  ✓ Dexie 路径 1 条事件（期望 1，实际 1）
+  ✓ memory 驱动未被误写入（隔离）（期望 0，实际 0）
+
+▶ 回归 · 双标签竞争、U16 恢复、drain 幂等与事件隔离
+  ✓ 接管后旧标签写入被明确拒绝（期望 1，实际 1）
+  ✓ 旧标签零事件落盘（期望 1，实际 1）
+  ✓ 他人持锁且租约未过期时，恢复链明确拒绝（不假报恢复成功）（期望 1，实际 1）
+  ✓ 租约过期接管后 U16 恢复链收敛
+  ✓ 恢复链确实重新取得写锁（重新 open ≠ 已持锁）
+  ✓ 生产逐字母路径不产生 pending 事件（期望 0，实际 0）
+  ✓ 重复 drain 仍收敛
+  ✓ 恢复 / drain 后事件行数不变（期望 1，实际 1）
+
+▶ 规则 2 · 每个错误字母对应正确的错词统计（两指标分别标注）
+  ✓ 活动错词事件数 = 3（错误字母数）（期望 3，实际 3）
+  ✓ 历史错误事件行数 = 3（期望 3，实际 3）
+  ✓ 合计 active = 3（期望 3，实际 3）
+  ✓ 合计 total = 3（期望 3，实际 3）
+  ✓ 两个指标分别标注
+  ✓ 活动指标不含主观「拼错次数」
+  ✓ 历史指标不含主观「拼错次数」
+  ✓ 口径说明写明逐字母累计
+
+▶ 规则 9 · 不污染其他会话 / 其他 owner 的错词数据
+  ✓ owner 取自会话文档（期望 guest，实际 guest）
+  ✓ 只统计本会话本账号的 1 条（期望 1，实际 1）
+  ✓ active 也只算 1 条（期望 1，实际 1）
+  ✓ 会话 B 独立统计（期望 1，实际 1）
+  ✓ 会话 B 记录不被 A 覆盖（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ 纯聚合按 owner 过滤后只剩 2 条 guest 事件（期望 2，实际 2）
+  ✓ 按 word_id 合并成 1 条记录（期望 1，实际 1）
+
+▶ 兼容 · V1 整词提交 API 未被 V2 改造破坏
+  ✓ V1 整词判定仍返回 wrong（期望 wrong，实际 wrong）
+  ✓ V1 整词错误仍为 1 条事件（兼容）（期望 1，实际 1）
+  ✓ V1 完整答题计数未变（期望 1，实际 1）
+
+────────────────────────────────────────────────────────────────
+✅ V2 逐字母状态机全部通过：106 项断言
+▶ SpellingResult 结果页统计专项回归
+
+▶ 1 · 当前活动错词事件数（active）
+  ✓ active = 2（两条本代次事件）（期望 2，实际 2）
+  ✓ 分类为 SETTLED_ZEROED（凭证优先）（期望 2，实际 2）
+  ✓ 仅两类计入 active（期望 2，实际 2）
+
+▶ 2 · 历史错误事件行数（total）与分类解耦
+  ✓ total 恒等于事件行数（含 stale）（期望 3，实际 3）
+  ✓ active 排除 stale（期望 2，实际 2）
+  ✓ stale 行单独分类（期望 1，实际 1）
+  ✓ total 恒 ≥ active
+  ✓ total 文案不含主观「拼错次数」
+  ✓ active 文案不含主观「拼错次数」
+  ✓ 两个指标分别标注
+
+▶ 3 · reset 覆盖后 active 下降、total 不变
+  ✓ 被覆盖事件判 COVERED（期望 1，实际 1）
+  ✓ active 从 2 降到 1（期望 1，实际 1）
+  ✓ total 仍为 2（reset 行不计入）（期望 2，实际 2）
+  ✓ 重复快照并集幂等（期望 1，实际 1）
+
+▶ 4 · 旧代次 stale 事件从 active 排除但计入 total
+  ✓ 只算本代次（期望 1，实际 1）
+  ✓ 历史行数含旧代次（期望 2，实际 2）
+  ✓ 旧代次判 PENDING_STALE（期望 1，实际 1）
+  ✓ 本代次判 PENDING_CURRENT（期望 1，实际 1）
+  ✓ stale 凭证判 SETTLED_STALE（期望 1，实际 1）
+  ✓ 凭证优先，active 不变（期望 1，实际 1）
+
+▶ 5 · 会话文档缺失 / 脏数据 → ORPHAN 与 UNCLASSIFIABLE 提示
+  ✓ 代次字段缺失判 UNCLASSIFIABLE（期望 1，实际 1）
+  ✓ 异常记录不计入 active（期望 1，实际 1）
+  ✓ 本会话异常记录仍计入 total（期望 2，实际 2）
+  ✓ anomaly_count > 0 供 UI 提示
+  ✓ 会话文档缺失 → 2 条判 ORPHAN（期望 2，实际 2）
+  ✓ ORPHAN 不计入活动错词（期望 0，实际 0）
+  ✓ ORPHAN 仍计入历史行数（期望 2，实际 2）
+  ✓ 错词本也如实报出 ORPHAN 数量（期望 2，实际 2）
+  ✓ ORPHAN 文案带数量占位符
+  ✓ ORPHAN 文案明确不计入活动错词
+
+▶ 6 · 空数据返回 0 / 空错词本，不编造数字
+  ✓ 无事件时 total = 0（期望 0，实际 0）
+  ✓ 无事件时 active = 0（期望 0，实际 0）
+  ✓ 错词本为空数组（期望 0，实际 0）
+  ✓ 错词本合计 = 0（期望 0，实际 0）
+  ✓ 空态文案存在（期望 本轮没有错词事件，实际 本轮没有错词事件）
+  ✓ 会话不存在返回 0，不抛错（期望 0，实际 0）
+  ✓ 会话不存在返回空错词本（期望 0，实际 0）
+
+▶ 7 · 当前账号范围说明与 owner 隔离
+  ✓ 其它 owner 的行不混入统计（期望 1，实际 1）
+  ✓ 错词本标注当前账号（期望 guest，实际 guest）
+  ✓ 错词本同样按 owner 过滤（期望 1，实际 1）
+  ✓ 文案带「当前账号」限定
+  ✓ 文案不表述成「全部历史记录」
+  ✓ note 明确否定「拼错次数」这一主观口径
+
+▶ 8 · 结果页错词本按词合并、错误次数与最近时间
+  ✓ 两个词各合并成 1 条记录（期望 2，实际 2）
+  ✓ 词条快照来自事件行（期望 abandon，实际 abandon）
+  ✓ 同词错误次数 = 错误字母数 2（期望 2，实际 2）
+  ✓ 最近错误时间 = max(occurred_at)（期望 1700000000020，实际 1700000000020）
+  ✓ 合计 3 行（期望 3，实际 3）
+  ✓ 合计 active 3（期望 3，实际 3）
+
+▶ 9 · 页面文案契约（与浏览器断言共用同一常量）
+  ✓ 两个指标文案非空
+  ✓ 口径说明含逐字母规则
+  ✓ 排除数量文案带占位符
+  ✓ 异常数量文案带占位符
+  ✓ 账号范围文案存在
+  ✓ 活动指标不用「次」作量词
+  ✓ 历史指标不用「次」作量词
+
+────────────────────────────────────────────────────────────────
+✅ 结果页统计专项全部通过：56 项断言

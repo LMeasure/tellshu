@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BookOpenCheck, Clock3, Plus, RotateCcw, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -7,15 +8,20 @@ import { Dialog } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { Skeleton } from '@/components/ui/skeleton'
+import { WordPopover } from '@/components/word/WordPopover'
 import { getStudyNoteByTranscriptId } from '@/domain/transcript/store'
 import { generateAndSaveStudyNote } from '@/domain/studyNote/generate'
 import { resolveVocabDictEntriesByKey } from '@/domain/studyNote/vocabDict'
+import { lemmaCandidates } from '@/domain/dict/lemma'
 import { addToVocab, isInVocab, makeWordId } from '@/domain/learning'
+import { lookupWordVariants } from '@/data/repository'
+import type { ContentWord } from '@/data/types'
 import type { StudyNoteRecord } from '@/domain/transcript/types'
 import type { StudyNoteVocabulary } from '@/domain/transcript/types'
 import type { Transcript } from '@/domain/transcript/types'
 import type { DictEntry } from '@/domain/types'
 import { ApiRequestError } from '@/data/asrClient'
+import { tokenize } from '@/lib/masking'
 import { cn } from '@/lib/utils'
 
 /**
@@ -30,6 +36,10 @@ import { cn } from '@/lib/utils'
  *
  * 词汇跳转：segment_start 命中（生成时回匹字幕段）才可点；
  * 未命中的词点不动也不报错——如实降级（title 说明原因）。
+ *
+ * 双语解释点词（决策 2026-10-22）：英文句/中文原句里的单个单词可点，
+ * 弹出单词释义（复用单词详情页 WordPopover：音标+释义+查看详情跳转）；
+ * 中文原句点词查不到词条会如实显示「未收录」（词库是英汉词典）。
  */
 
 type PanelStatus = 'loading' | 'idle' | 'generating' | 'ready' | 'failed'
@@ -89,8 +99,14 @@ export function StudyNotePanel({
       setStatus('ready')
     } catch (e) {
       if (controller.signal.aborted) return
-      if (e instanceof ApiRequestError && e.status === 503) {
-        // AI 未接入：空态引导，绝不显示假学习稿
+      // AI 未接入（服务端 503 service_unavailable）：空态引导，绝不显示假学习稿。
+      // 代理层 503（code=backend_unreachable，后端没启动）走错误态——
+      // 后端没启动 ≠ AI 未接入，不能误导用户去配 AI。
+      if (
+        e instanceof ApiRequestError &&
+        e.status === 503 &&
+        e.code !== 'backend_unreachable'
+      ) {
         setNotConfigured(true)
         setStatus('idle')
         return
@@ -114,6 +130,66 @@ export function StudyNotePanel({
   }
 
   const generating = status === 'generating'
+
+  /* ---- 双语解释：点单词看释义（复用单词详情页同款弹窗与查词链） ---- */
+  const navigate = useNavigate()
+  const [pop, setPop] = useState<{ raw: string; rect: DOMRect } | null>(null)
+  const [popData, setPopData] = useState<{ data: ContentWord | null; matched: string | null } | null>(
+    null,
+  )
+  const [popLoading, setPopLoading] = useState(false)
+  const popSeq = useRef(0)
+
+  function openWord(raw: string, rect: DOMRect): void {
+    const seq = ++popSeq.current
+    setPop({ raw, rect })
+    setPopData(null)
+    setPopLoading(true)
+    lookupWordVariants(lemmaCandidates(raw))
+      .then((hit) => {
+        if (seq !== popSeq.current) return // 快速连点：丢弃旧结果
+        setPopData({ data: hit, matched: hit?.word ?? null })
+        setPopLoading(false)
+      })
+      .catch(() => {
+        if (seq !== popSeq.current) return
+        setPopData({ data: null, matched: null })
+        setPopLoading(false)
+      })
+  }
+
+  // Esc 关闭弹窗（与单词详情页同口径）
+  useEffect(() => {
+    if (!pop) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPop(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pop])
+
+  /**
+   * 句子渲染为可点单词（决策 2026-10-22：点单个单词出释义、可跳转详情页）。
+   * 英文句按英文分词；中文原句同样可点——词库是英汉词典，查不到会如实
+   * 显示「未收录」，绝不编造释义（项目铁律）。
+   */
+  function renderTappable(text: string, lang: 'en' | 'zh') {
+    return tokenize(text, lang).map((tk, j) =>
+      tk.word ? (
+        <button
+          key={j}
+          type="button"
+          onClick={(e) => openWord(tk.t, e.currentTarget.getBoundingClientRect())}
+          className="cursor-pointer rounded text-left transition-colors hover:bg-primary/15 active:bg-primary/25"
+          title={`点按查看「${tk.t}」的释义`}
+        >
+          {tk.t}
+        </button>
+      ) : (
+        <span key={j}>{tk.t}</span>
+      ),
+    )
+  }
 
   return (
     <Card>
@@ -213,11 +289,12 @@ export function StudyNotePanel({
                 <ul className="space-y-2">
                   {note.bilingual_notes.map((item, index) => (
                     <li key={`${item.en}-${index}`} className="text-sm leading-relaxed">
-                      <p className="font-medium">{item.en}</p>
-                      <p className="text-muted-foreground">{item.zh}</p>
+                      <p className="font-medium">{renderTappable(item.en, 'en')}</p>
+                      <p className="text-muted-foreground">{renderTappable(item.zh, 'zh')}</p>
                     </li>
                   ))}
                 </ul>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">点按单词可查看释义并跳转详情页</p>
               </section>
             )}
 
@@ -246,6 +323,19 @@ export function StudyNotePanel({
             )}
           </div>
         )}
+
+        {/* 双语解释的点词释义弹窗（fixed 定位，挂在哪都不受布局影响） */}
+        {pop ? (
+          <WordPopover
+            raw={pop.raw}
+            matched={popData?.matched ?? null}
+            data={popData?.data ?? null}
+            loading={popLoading}
+            rect={pop.rect}
+            onClose={() => setPop(null)}
+            onDetail={(w) => navigate(`/word/${encodeURIComponent(w)}`)}
+          />
+        ) : null}
       </CardBody>
 
       <Dialog
@@ -405,9 +495,14 @@ function VocabCard({
                   {entry.definition_zh !== '' ? entry.definition_zh : entry.definition_en}
                 </p>
                 {entry.examples[0] !== undefined && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {entry.examples[0].en}
-                    {entry.examples[0].zh !== null && ` —— ${entry.examples[0].zh}`}
+                    {entry.examples[0].zh !== null && (
+                      <span data-testid="example-zh" className="text-xs text-emerald-600 dark:text-emerald-400">
+                        {' '}
+                        —— {entry.examples[0].zh}
+                      </span>
+                    )}
                   </p>
                 )}
               </div>

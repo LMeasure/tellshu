@@ -3,11 +3,13 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   BookOpen,
   Camera,
+  CheckCircle2,
   FileText,
   Image as ImageIcon,
   Languages,
   Music,
   Plus,
+  RefreshCw,
   Trash2,
   ArrowRight,
   AlertCircle,
@@ -31,6 +33,8 @@ import {
   type TranslateResult,
 } from '@/data/dictClient'
 import { isCameraSupported, isOcrSupported, ocrService, type PickedImage } from '@/services/ocr'
+import { ConvertPanel as ConvertImport } from '@/components/convert/ConvertPanel'
+import { MediaTranscriptImport } from '@/components/transcript/MediaTranscriptImport'
 import { extractEpubBook, parseTxtBook } from '@/lib/epub'
 import { detectLanguage, countChars, type LangKind } from '@/lib/textLang'
 import {
@@ -52,8 +56,8 @@ export interface EditSeed {
   content: string
 }
 
-/** 导入页页签：前三个是素材类型，最后一个是「图片识别」（功能 A） */
-type ImportTab = ReadingType | 'scan'
+/** 导入页页签：前三个是素材类型，最后三个是「图片识别」「格式转换」「音视频字幕」 */
+type ImportTab = ReadingType | 'scan' | 'convert' | 'media'
 
 const LANG_LABEL: Record<LangKind, string> = {
   zh: '中文',
@@ -80,7 +84,7 @@ export function Import() {
   const [searchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
   const [tab, setTab] = useState<ImportTab>(
-    ['article', 'book', 'audio', 'scan'].includes(tabParam ?? '')
+    ['article', 'book', 'audio', 'scan', 'convert', 'media'].includes(tabParam ?? '')
       ? (tabParam as ImportTab)
       : 'article',
   )
@@ -109,6 +113,8 @@ export function Import() {
           { key: 'book', label: '书籍' },
           { key: 'audio', label: '音频' },
           { key: 'scan', label: '扫描识别' },
+          { key: 'convert', label: '格式转换' },
+          { key: 'media', label: '音视频字幕' },
         ]}
         active={tab}
         onChange={(k) => setTab(k as ImportTab)}
@@ -119,6 +125,8 @@ export function Import() {
       {tab === 'book' && <BookImport onSaved={loadList} />}
       {tab === 'audio' && <AudioImport onSaved={loadList} />}
       {tab === 'scan' && <ScanImport onSaved={loadList} />}
+      {tab === 'convert' && <ConvertImport />}
+      {tab === 'media' && <MediaTranscriptImport />}
 
       <div className="mt-6">
         <div className="mb-2 text-sm font-semibold text-muted-foreground">我的素材</div>
@@ -128,7 +136,7 @@ export function Import() {
           <EmptyState
             icon={Plus}
             title="还没有导入"
-            description="粘贴一段中文或英文，或上传 TXT/EPUB 书籍、MP3/M4A/M4B 音频。"
+            description="粘贴一段中文或英文，或上传 TXT/EPUB 书籍、MP3/M4A/M4B 等音视频。"
           />
         ) : (
           <div className="space-y-2">
@@ -168,7 +176,7 @@ function ReadingRow({
             return (
               <div className="text-xs text-muted-foreground">
                 {LANG_LABEL[lang]} · {unitLabel(lang, doc.word_count)} ·{' '}
-                {doc.type === 'book' ? '书籍' : '文章'}
+                {doc.type === 'book' ? '书籍' : doc.type === 'transcript' ? '字幕' : '文章'}
                 {doc.on_shelf ? ' · 已在书架' : ''}
               </div>
             )
@@ -194,6 +202,7 @@ function ReadingRow({
 function AudioRow({ doc, onChanged }: { doc: ReadingDoc; onChanged: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const mediaRef = useMediaAudio()
+  const isVideo = (doc.media_type ?? '').startsWith('video/')
   useEffect(() => {
     if (!doc.blob) return
     const u = URL.createObjectURL(doc.blob)
@@ -209,7 +218,10 @@ function AudioRow({ doc, onChanged }: { doc: ReadingDoc; onChanged: () => void }
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate font-medium">{doc.title}</div>
-            <div className="text-xs text-muted-foreground">音频{doc.ext ? ` · ${doc.ext.toUpperCase()}` : ''}</div>
+            <div className="text-xs text-muted-foreground">
+              {isVideo ? '视频' : '音频'}
+              {doc.ext ? ` · ${doc.ext.toUpperCase()}` : ''}
+            </div>
           </div>
           <button
             className="text-muted-foreground hover:text-destructive"
@@ -220,9 +232,13 @@ function AudioRow({ doc, onChanged }: { doc: ReadingDoc; onChanged: () => void }
           </button>
         </div>
         {url ? (
-          <audio ref={mediaRef} controls src={url} className="w-full" />
+          isVideo ? (
+            <video controls src={url} className="w-full rounded-lg" />
+          ) : (
+            <audio ref={mediaRef} controls src={url} className="w-full" />
+          )
         ) : (
-          <div className="text-xs text-muted-foreground">音频文件缺失</div>
+          <div className="text-xs text-muted-foreground">媒体文件缺失</div>
         )}
       </CardBody>
     </Card>
@@ -421,38 +437,86 @@ function BookImport({ onSaved }: { onSaved: () => void }) {
   )
 }
 
-const AUDIO_HINT = '支持 MP3 / M4A / M4B'
+const AUDIO_HINT = '支持 MP3 / WAV / AAC / FLAC / M4A / OGG / MP4 / AVI / MKV / MOV / WMV / FLV'
+const AUDIO_EXT_RE = /\.(mp3|wav|aac|flac|m4a|ogg|mp4|avi|mkv|mov|wmv|flv)$/i
 
-/** 音频导入：上传音频文件（MP3/M4A/M4B），本地保存并可播放 */
+type AudioItemStatus = 'pending' | 'uploading' | 'success' | 'failed'
+
+interface AudioItem {
+  id: string
+  file: File
+  status: AudioItemStatus
+  error?: string
+}
+
+function audioExt(name: string): string {
+  const lower = name.toLowerCase()
+  return lower.includes('.') ? lower.split('.').pop() ?? '' : ''
+}
+
+function guessMediaType(file: File, ext: string): string {
+  if (file.type) return file.type
+  const isVideo = /\.(mp4|avi|mkv|mov|wmv|flv)$/.test(ext)
+  return isVideo ? `video/${ext}` : `audio/${ext}`
+}
+
+/** 音视频导入：批量选择、逐个本地保存，失败项可一键重传。视频以 video 媒体类型入库，列表内可播放。 */
 function AudioImport({ onSaved }: { onSaved: () => void }) {
-  const [status, setStatus] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [items, setItems] = useState<AudioItem[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
-  async function handleFile(file: File) {
-    const lower = file.name.toLowerCase()
-    setStatus('')
-    if (!/\.(mp3|m4a|m4b)$/.test(lower)) {
-      setStatus(`仅支持 ${AUDIO_HINT}；当前格式暂不支持`)
-      return
-    }
-    setBusy(true)
+  const failedCount = items.filter((i) => i.status === 'failed').length
+
+  async function processItem(item: AudioItem): Promise<void> {
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: 'uploading', error: undefined } : i)))
+    const ext = audioExt(item.file.name)
     try {
-      const title = file.name.replace(/\.(mp3|m4a|m4b)$/i, '')
-      const ext = lower.split('.').pop() || 'mp3'
+      const title = item.file.name.replace(/\.[^.]+$/, '')
       await saveReading({
         title,
         type: 'audio',
         content: '',
-        blob: file,
-        media_type: file.type || 'audio/mpeg',
+        blob: item.file,
+        media_type: guessMediaType(item.file, ext),
         ext,
       })
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: 'success' } : i)))
       onSaved()
-      setStatus(`已导入音频「${title}」`)
-    } finally {
-      setBusy(false)
+    } catch (e) {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, status: 'failed', error: e instanceof Error ? e.message : '保存失败' } : i,
+        ),
+      )
     }
+  }
+
+  function addFiles(files: FileList | null): void {
+    if (!files || files.length === 0) return
+    const next: AudioItem[] = []
+    for (const file of Array.from(files)) {
+      const lower = file.name.toLowerCase()
+      const ok = AUDIO_EXT_RE.test(lower)
+      next.push({
+        id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        status: ok ? 'pending' : 'failed',
+        error: ok ? undefined : `不支持的格式：${audioExt(lower) || '未知'}`,
+      })
+    }
+    setItems((prev) => [...prev, ...next])
+    for (const it of next) {
+      if (it.status === 'pending') void processItem(it)
+    }
+  }
+
+  async function retryFailed(): Promise<void> {
+    const failed = items.filter((i) => i.status === 'failed')
+    await Promise.allSettled(failed.map((it) => processItem(it)))
+  }
+
+  function clearAll(): void {
+    setItems([])
   }
 
   return (
@@ -463,24 +527,56 @@ function AudioImport({ onSaved }: { onSaved: () => void }) {
           onClick={() => inputRef.current?.click()}
         >
           <Music className="h-8 w-8 text-primary" />
-          <div className="text-sm font-medium">点击上传音频文件</div>
-          <div className="text-xs text-muted-foreground">本地保存，可反复听</div>
+          <div className="text-sm font-medium">点击上传音视频文件（可多选）</div>
+          <div className="text-xs text-muted-foreground">本地保存，可反复听 / 看</div>
         </div>
         <input
           ref={inputRef}
           type="file"
-          accept=".mp3,.m4a,.m4b,audio/*"
+          multiple
+          accept="audio/*,video/*,.mp3,.wav,.aac,.flac,.m4a,.ogg,.mp4,.avi,.mkv,.mov,.wmv,.flv"
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) handleFile(f)
+            addFiles(e.target.files)
             e.target.value = ''
           }}
         />
-        {busy && <div className="text-xs text-accent">正在保存…</div>}
-        {status && <div className="text-xs text-muted-foreground">{status}</div>}
+
+        {items.length > 0 && (
+          <div className="space-y-2">
+            {items.map((it) => (
+              <div
+                key={it.id}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                  it.status === 'failed' ? 'border-destructive/40 bg-destructive/5' : 'border-input bg-background',
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate">{it.file.name}</span>
+                {it.status === 'uploading' && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-primary" />}
+                {it.status === 'success' && <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />}
+                {it.status === 'failed' && <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />}
+                {it.status === 'pending' && <span className="shrink-0 text-xs text-muted-foreground">等待中</span>}
+              </div>
+            ))}
+            {failedCount > 0 && (
+              <Button variant="outline" className="w-full" onClick={() => void retryFailed()} aria-label="重传失败项">
+                <RefreshCw className="h-4 w-4" /> 重传失败项（{failedCount}）
+              </Button>
+            )}
+            <button
+              type="button"
+              onClick={clearAll}
+              className="w-full text-center text-xs text-muted-foreground hover:text-destructive"
+              aria-label="清空列表"
+            >
+              清空列表
+            </button>
+          </div>
+        )}
+
         <div className="rounded-lg bg-secondary/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-          弱提示：{AUDIO_HINT}（其他音频格式敬请期待）
+          弱提示：{AUDIO_HINT}
         </div>
       </CardBody>
     </Card>

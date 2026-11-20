@@ -1,55 +1,47 @@
-# 阅读器 V3.0 · 总览
+# 格式转换 V2 交付总览（2026-10-13）
 
-> 日期：2026-10-09 01:05 ｜ 范围：`src/components/reader/*`、`src/pages/Reader.tsx`、
-> `src/lib/{fitPaging.ts[新],annotate.tsx}`、`src/index.css`、`src/domain/types.ts`、
-> `scripts/test_fitpaging.ts[新]`、`package.json`
-> ｜ **无 Dexie schema 变更**（`ReadingAnnotation.author` 为可选字段、不建索引）
+## 一句话结论
+在 V1 骨架基础上，打通了**首个真实转换引擎 PDF→PNG（PyMuPDF）**，补齐了**任务超时回滚**与**上传路由安全防线**，端到端闭环已可验证。其余 5 个方向仍诚实保持 `ConverterNotImplemented`，绝不伪造输出。
 
-## 完成情况（六项需求 + 三个 Bug 点）
+## 交付清单（按层）
 
-| # | 需求 | 状态 | 关键实现 |
-|---|---|---|---|
-| 一 | 底部弹窗升级「综合控制中心」+ 5 导航 | ✅ | 顶部固定 **目录/笔记/进度/听书/设置**，条件渲染切换；单击正文 Toggle、点外部关闭、内部 `stopPropagation` 防误触 |
-| 二 | 设置模块：双行布局 + 缩进按钮 + 合并行 | ✅ | 字号+缩进 ／ 行距+边距 ／ 合并行 字体·背景·翻页（值+›，点击弹选择器）；缩进按钮 关=绿框白底绿字、开=绿框绿底白字 |
-| 三·1 | 一页即一屏 + 重构分页 + 只左右滑 | ✅ | `lib/fitPaging.ts` **按真实渲染高度分页**；容器固定高（100dvh−顶栏）、页面层 `overflow:hidden`；超长段落拆片段跨页 |
-| 三·2 | 平滑翻页三页连排 + 跟手 + 吸附 | ✅ | 沿用 V2.0（300% 轨道 + 原生 touchmove + 位移吸附） |
-| 三·3 | 覆盖翻页重叠/闪现修复 | ✅ | 背景 `inherit`(=透明)→**不透明 `var(--rbg)`**；z-index 当前页1/翻入2；动画结束移除旧页 DOM |
-| 四 | 听书独立 Tab | ✅ | 音符图标 + 播放/暂停 + 语速 + 刻度定时（关·15·30·45·60·90）+ 本集结束开关；**开=读完本集停／关=自动续读**，停止即 Toast 原因 |
-| 五 | 笔记虚线标识 + 点开详情 | ✅ | `underline dashed`；点虚线文字弹 **NoteDetail**（编辑/删除/来源）；他人笔记紫色虚线（需账号体系，不编造数据） |
-| 六 | 进度模块极简 UI | ✅ | 空心圆 28px + 左右横杠（间距 3px、不贯穿）；输入页码跳转 + 拖动圆点快速翻页 |
-| Bug | 微信听书无声 | ⚠️ 缓解 | UA 识别 + 引导 + `resume()` 预热；**彻底解决需服务端 TTS** |
-| Bug | 做笔记存不上 | ✅（V2.0 已修） | 打开想法框即快照选区 + 交互期冻结，本轮未回退 |
+### Python Worker（真实引擎 + 回滚 + 安全）
+| 文件 | 关键内容 |
+|---|---|
+| `server/convert_worker/converters/pdf_to_png.py` | **真实引擎**：PyMuPDF 每页→`page_001.png`…，dpi 默认 150/clamp[72,600]，`max_pages` 防爆内存；`fitz` 懒加载 |
+| `server/convert_worker/converters/base.py` | `convert(input, output_dir, **opts) -> list[str]`（支持多文件产出） |
+| `server/convert_worker/converters/registry.py` | `("pdf","png")` 直接指向真实引擎 |
+| `server/convert_worker/db.py` | 注入连接（可 SQLite 单测）；`reclaim_stale_tasks(timeout)`；多结果 `result_files` jsonb；`psycopg2` 懒加载 |
+| `server/convert_worker/worker.py` | 每任务独立输出目录；处理完删源文件；每 `reclaim_every`(10) 轮回滚 |
+| `server/convert_worker/config.py` | 新增 `reclaim_every` / `task_timeout` |
+| `server/convert_worker/tests/test_reclaim.py` | 超时回滚 3 例（内存 SQLite） |
+| `server/convert_worker/tests/test_e2e_pdf_to_png.py` | 引擎端到端（2 页 PDF→2 PNG + dpi clamp + max_pages） |
 
-## 关键决策
+### 后端（安全防线）
+| 文件 | 关键内容 |
+|---|---|
+| `server/sql/005_convert_result_files.sql` | `convert_tasks` 增 `result_files jsonb`（多页结果；幂等） |
+| `server/src/http/errors.ts` | 新增 415 `unsupportedMediaType` |
+| `server/src/routes/convert.ts` | `CONVERT_MAX_FILE_SIZE`(默认50MB→413)；扩展名+Content-Type 双白名单(→415)；文件名清洗；uuid 落盘；零 shell |
 
-- **「一页即一屏」用测量探针**：探针样式必须与正文 `<article>` 逐项一致，且**测真实渲染文本**
-  （`splitSentences().join(' ')`），否则中文长段会少算行数导致溢出。
-- **坐标不漂**：段落片段带 `data-para-start`，`selectionCapture` 把偏移还原到**整段坐标系**，
-  划线/想法跨页仍准确。
-- **顶栏改为常驻**：满足「固定高度 = 100vh − 工具栏高度」并避免分页随顶栏显隐抖动（V2.0 为沉浸式呼出）。
-- **取消左右 1/4 点击翻页**：按需求「单击只负责开/关面板」处理；翻页走横向滑动/拖动 + 进度圆点 + 键盘 ←/→。
-- **他人笔记不做假数据**：只把数据通道与 UI 就位（`author` → 紫色虚线 + 来源标注）。
+### 文档
+- `格式转换-交付说明.md`：新增第六节「V2 交付」
+- `产品前提卡-给协作方.md`：更新日志 + §8 红线 #9（PDF→PNG 已接入，其余 5 仍 NOT_IMPLEMENTED）+ 架构注
+- `server/convert_worker/README.md`：PyMuPDF 安装 + `CONVERT_ENGINE_ENABLED=true` 启用流程
 
-## 验证结果（四件套全绿）
+## 验证结果（诚实标注）
+- ✅ Worker `py_compile` 全量通过
+- ✅ Worker 单测 9 项：7 通过 / 2 跳过（沙箱默认未装 PyMuPDF）
+- ✅ 引擎实跑：隔离 venv 装 `PyMuPDF==1.28.2` 后 e2e 2/2 通过（生成 2 张合法 PNG、dpi clamp、max_pages 生效），验证后已删除该 venv
+- ✅ `convert.ts` / `errors.ts` 类型检查通过
+- ⚠️ **既有无关错误（非本次引入，未动）**：`server/src/asr/providers/tencent.ts:27` 误从 `node:crypto` 导入 `deflateSync`（应为 `node:zlib`），导致 server 整体 typecheck/build 失败。属越界改动，已如实标注，待你拍板是否单独修。
 
-```
-npx tsc --noEmit            ✅ 0 error
-npm test                    ✅ 11 套全过（新增 scripts/test_fitpaging.ts）
-npm run build               ✅ built（PWA 15 项预缓存）
-python scripts/check_pwa.py ✅ 10 项体检通过
-preview (4174) 冒烟         ✅ / 与 /reader/x 均 200，且页面引用 assets 与 dist 一致
-```
+## 红线守住情况
+- 纯离线不受影响：转换是 `server/` 旁路服务，引擎默认关（`CONVERT_ENGINE_ENABLED=false`）时任务接口仍如实 503。
+- 不编造：5 个未接入方向继续诚实 `failed` + 写回原因，无假文件。
+- 未动无关文件：仅改 `convert_worker/*` 与 `convert` 相关 `server/src/*`；`tencent.ts` 等未触碰。
 
-## 待办 / 待你确认
-
-1. 他人笔记：等账号/社区体系接入后写入 `author` 即生效（当前不产生他人数据）。
-2. 微信内听书彻底可听：需服务端 TTS（会打破纯离线定位）。
-3. 顶栏是否恢复「点正文才显示」：若恢复，需接受分页随顶栏显隐重算。
-4. 是否保留左右 1/4 点击翻页：需指定与「单击 Toggle 面板」的边界。
-5. 背景纹理素材（无图，暂纯色主题）。
-6. 分页边界：极端字号/超长不可断行内容下页面层 `overflow:hidden`，理论有裁切风险（已留 6px 余量）。
-
-详细内容见《阅读器V3.0改版-交付说明.md》；《产品前提卡-给协作方.md》已同步（顶部日期 + 更新日志 + `/reader/:id` 页面清单行）。
-
----
-本内容由 AI 生成，请核实后使用。
+## 后续可选项
+1. 修 `tencent.ts` 的 `deflateSync` 导入（一行，但越界，需你确认）。
+2. 多页 PDF→PNG 的打包下载（ZIP），目前下载返回第一页。
+3. 接入其余 5 个方向（文档 §8 已附推荐工具）。

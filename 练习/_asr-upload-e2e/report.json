@@ -1,0 +1,123 @@
+{
+  "startedAt": "2026-10-22T10:42:20.307Z",
+  "base": "http://127.0.0.1:4174",
+  "audio": {
+    "path": "C:\\Users\\lagom\\AppData\\Local\\Temp\\shutree-e2e-audio.wav",
+    "bytes": 639624
+  },
+  "checks": [
+    {
+      "id": "U0",
+      "name": "转写页打开且文件选择器可用",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/import?tab=media"
+    },
+    {
+      "id": "U1",
+      "name": "选完文件自动开始转写（无「开始转写」按钮）",
+      "ok": true,
+      "detail": "625KB wav 自动进入处理态"
+    },
+    {
+      "id": "U1.5a",
+      "name": "无语言选择器（语言恒自动检测）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U2.0",
+      "name": "提交请求携带 language=auto（自动检测）",
+      "ok": true,
+      "detail": "language=auto / media=true"
+    },
+    {
+      "id": "U2",
+      "name": "上传→ASR→done：UI 渲染出时间轴字幕段",
+      "ok": true,
+      "detail": "2 段 / 耗时 6.9s"
+    },
+    {
+      "id": "U3",
+      "name": "UI 信息行显示时长与段数",
+      "ok": true,
+      "detail": "时长 00:20 / 2 段"
+    },
+    {
+      "id": "U4",
+      "name": "结果落本机 Dexie transcripts（隔离 profile 内恰好 1 条）",
+      "ok": true,
+      "detail": "id=2a66a72c-bf44-4f4c-ae92-5c9971dfb345 / source=asr / 2 段"
+    },
+    {
+      "id": "U4.2",
+      "name": "落库记录 fileName/语言/时长/段数与上传一致",
+      "ok": true,
+      "detail": "shutree-e2e-audio.wav / en / 19.99s"
+    },
+    {
+      "id": "U5",
+      "name": "阅读器资料自动登记 t_<jobId>",
+      "ok": true,
+      "detail": "id=t_2a66a72c-bf44-4f4c-ae92-5c9971dfb345 / type=transcript"
+    },
+    {
+      "id": "U5.2",
+      "name": "资料 segments 与转写结果逐段一致（不重生成、不截断）",
+      "ok": true,
+      "detail": "2 段"
+    },
+    {
+      "id": "U6",
+      "name": "服务端 API 回读同一 jobId：done 且段数一致",
+      "ok": true,
+      "detail": "HTTP 200 / status=done / 2 段"
+    },
+    {
+      "id": "U7",
+      "name": "刷新后字幕页回读最近转写（不要求重新上传）",
+      "ok": true,
+      "detail": "2 段 / 含「已从本机存储恢复」提示=true"
+    },
+    {
+      "id": "U9.1",
+      "name": "导出 SRT：真实落盘、序号连续、时间码合法、段数一致",
+      "ok": true,
+      "detail": "shutree-e2e-audio-字幕.srt / 2 块"
+    },
+    {
+      "id": "U9.2",
+      "name": "导出 TXT：真实落盘、每段一行、无时间戳",
+      "ok": true,
+      "detail": "shutree-e2e-audio-字幕.txt / 2 行"
+    },
+    {
+      "id": "U8",
+      "name": "阅读器打开 t_<jobId>，正文含首段文本",
+      "ok": true,
+      "detail": "The Innocence of Father Brown Chapter 10"
+    }
+  ],
+  "downloads": [
+    {
+      "ariaLabel": "导出 SRT",
+      "suggested": "shutree-e2e-audio-字幕.srt",
+      "bytes": 333
+    },
+    {
+      "ariaLabel": "导出 TXT",
+      "suggested": "shutree-e2e-audio-字幕.txt",
+      "bytes": 267
+    }
+  ],
+  "screenshots": [
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_asr-upload-e2e\\u1-picked.png",
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_asr-upload-e2e\\u3-done.png",
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_asr-upload-e2e\\u7-reload.png",
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_asr-upload-e2e\\u8-reader.png"
+  ],
+  "notVerified": [
+    "用户真实浏览器中的既有数据由用户刷新后自行确认；本脚本只用隔离 incognito context"
+  ],
+  "finishedAt": "2026-10-22T10:42:51.630Z",
+  "failures": 0
+}

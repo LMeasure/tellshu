@@ -98,7 +98,7 @@ export function Settings() {
           <Row icon={Moon} label="深色模式">
             <Toggle on={settings.darkMode} onClick={toggleDarkMode} />
           </Row>
-          <Row icon={Languages} label="中文辅助（关闭则不显示中文释义）">
+          <Row icon={Languages} label="中文辅助（控制助记提示；例句中文释义常驻显示）">
             <Toggle on={settings.chineseAssist} onClick={() => setSetting('chineseAssist', !settings.chineseAssist)} />
           </Row>
           <Row icon={Gauge} label="音频语速">

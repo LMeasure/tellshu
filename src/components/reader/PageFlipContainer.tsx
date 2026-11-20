@@ -157,6 +157,9 @@ export function PageFlipContainer({
 
     const onStart = (e: TouchEvent) => {
       if (live.current.disabled || live.current.animating || e.touches.length !== 1) return
+      // 正在划词（非折叠选区）时不抢占为翻页手势，交还浏览器处理文本选择
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) return
       const t = e.touches[0]
       sx = t.clientX
       sy = t.clientY
@@ -165,6 +168,14 @@ export function PageFlipContainer({
     }
     const onMove = (e: TouchEvent) => {
       if (!dragging) return
+      // 长按划词过程中选区已激活：放弃翻页手势，绝不再 preventDefault（否则会掐断选区）
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) {
+        setDrag(0)
+        dragging = false
+        axis = null
+        return
+      }
       const t = e.touches[0]
       const dx = t.clientX - sx
       const dy = t.clientY - sy
@@ -251,6 +262,9 @@ export function PageFlipContainer({
       if (Date.now() - s.t > TAP_MAX_MS) return
       if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > TAP_MOVE_PX) return
     }
+    // 单击不清除活跃选区：长按划词后可能仍保留选区，交给划词菜单处理，不响应面板开关
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed) return
     onTapCenter()
   }
 
@@ -313,7 +327,13 @@ export function PageFlipContainer({
   /* ---------------- scroll 模式渲染 ---------------- */
   if (pageMode === 'scroll') {
     return (
-      <div className="page-flip-stage min-h-0 flex-1" onClick={handleClick} onTouchStart={handleTouchStart} data-testid="page-flip-scroll">
+      <div
+        className="page-flip-stage min-h-0 flex-1"
+        style={{ touchAction: 'auto' }}
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
+        data-testid="page-flip-scroll"
+      >
         <div
           ref={scrollerRef}
           className="page-flip-layer reader-scroll h-full"
@@ -333,13 +353,14 @@ export function PageFlipContainer({
     const translate =
       snap === 'next' ? '-66.6667%' : snap === 'prev' ? '0%' : `calc(-33.3333% + ${dragPx}px)`
     return (
-      <div
-        ref={slideStageRef}
-        className="page-flip-stage min-h-0 flex-1"
-        onClick={handleClick}
-        onTouchStart={handleTouchStart}
-        data-testid="page-flip-slide"
-      >
+        <div
+          ref={slideStageRef}
+          className="page-flip-stage min-h-0 flex-1"
+          style={{ touchAction: 'none' }}
+          onClick={handleClick}
+          onTouchStart={handleTouchStart}
+          data-testid="page-flip-slide"
+        >
         <div
           className="pf-track"
           style={{ transform: `translateX(${translate})`, transition }}
@@ -357,13 +378,14 @@ export function PageFlipContainer({
 
   /* ---------------- book / cover 模式渲染（两页动画） ---------------- */
   return (
-    <div
-      className={cn('page-flip-stage min-h-0 flex-1', pageMode === 'book' && 'pf-book-stage')}
-      onClick={handleClick}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      data-testid={`page-flip-${pageMode}`}
-    >
+      <div
+        className={cn('page-flip-stage min-h-0 flex-1', pageMode === 'book' && 'pf-book-stage')}
+        style={{ touchAction: 'none' }}
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        data-testid={`page-flip-${pageMode}`}
+      >
       {flip ? (
         <>
           <div

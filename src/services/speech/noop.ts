@@ -16,14 +16,17 @@ import { resolveRate } from './types'
 export interface NoopSpeechLog {
   spoken: { text: string; rate: number; natural: boolean }[]
   cancelled: number
+  /** V2：错误提示音触发次数（单测断言「每个错误字母播放一次」） */
+  errorTones: number
 }
 
-export const noopSpeechLog: NoopSpeechLog = { spoken: [], cancelled: 0 }
+export const noopSpeechLog: NoopSpeechLog = { spoken: [], cancelled: 0, errorTones: 0 }
 
 /** 每次 import 重置日志（单测隔离用） */
 export function resetNoopSpeechLog(): void {
   noopSpeechLog.spoken.length = 0
   noopSpeechLog.cancelled = 0
+  noopSpeechLog.errorTones = 0
 }
 
 export const noopSpeechService: SpeechService = {
@@ -51,6 +54,11 @@ export const noopSpeechService: SpeechService = {
 
   cancel(): void {
     noopSpeechLog.cancelled += 1
+  },
+
+  playErrorTone(): boolean {
+    noopSpeechLog.errorTones += 1
+    return true
   },
 
   async listen(_options?: ListenOptions): Promise<string> {

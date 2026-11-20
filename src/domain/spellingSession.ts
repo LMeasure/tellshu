@@ -27,7 +27,24 @@
  */
 
 import { storage } from '../services/storage'
+import { AtomicAbortError } from '../services/storage/types'
 import { uuid } from '../lib/uuid'
+import {
+  TAB_ID,
+  assertLockInTransaction,
+  mergeLockState,
+  toLockError,
+} from './spellingLock'
+import { buildErrorEvent, validateEventRow } from './spellingErrorEvents'
+import type { SpellingErrorEventKind } from './types'
+import {
+  LETTER_ERROR_KIND,
+  applyLetter,
+  letterEventId,
+  type LetterErrorEvent,
+  type LetterResult,
+} from './spellingTyping'
+import { speechService } from '../services/speech'
 import {
   abandonSession,
   applyAttempt,
@@ -156,30 +173,411 @@ export async function getSessionById(id: string): Promise<SpellingSession | null
  * 写入口的公共骨架
  * ------------------------------------------------------------------ */
 
+interface MutateOptions {
+  /** 调用方已读过会话时直接给 id，避免重复查询 */
+  sessionId?: string
+  /** T-B 凭证：与 V1 状态在**同一次会话 put** 内原子落库（不额外占一次 put） */
+  settledEventIds?: string[]
+  now?: number
+}
+
 /**
- * 读活跃/暂停会话 → 交给纯函数 → 整份写回。
- * 任何一步失败都抛 SpellingSessionError，**不返回成功**（方案 §8「不假报成功」）。
+ * 修补类写入的公共出口：仍走单表 CAS + 锁守卫，
+ * 失锁标签的修补写不会静默覆盖接管方的数据。
+ */
+async function commitSessionWithLock(
+  sessionId: string,
+  next: SpellingSession,
+  now = Date.now(),
+): Promise<void> {
+  try {
+    await storage.updateAtomic('spellingSessions', sessionId, (current) =>
+      mergeLockState(current, next, TAB_ID, now),
+    )
+  } catch (err) {
+    if (err instanceof AtomicAbortError) throw toLockError(err.reason)
+    throw err
+  }
+}
+
+/**
+ * 读会话 → 纯函数算新文档 → **单表原子 CAS 写回**（跨标签单写者的落地点）。
  *
- * 状态语义：PAUSED / ABANDONED 下提交报 SESSION_NOT_ACTIVE（UI 状态违规），
- * 完全没有会话才报 NO_ACTIVE_SESSION。
+ * 与旧实现（整份 put、last-writer-wins）的区别：reducer 在 rw 事务内基于
+ * current 真值重算，并把锁状态以 current 为准覆盖回去；两个标签并发时
+ * 后到者会被 mergeLockState 判为 TAB_LOCK_LOST，而不是静默覆盖。
+ *
+ * 业务纯函数的异常通过 businessError 带出事务后原样抛，避免被误转成
+ * 「写库失败」；只有存储写入/锁拒绝才走错误转换。
  */
 async function mutate<T>(
   fn: (session: SpellingSession) => { session: SpellingSession; value: T },
+  options: MutateOptions = {},
 ): Promise<{ session: SpellingSession; value: T }> {
+  let targetId = options.sessionId
+  if (!targetId) {
+    const target = await getResumableSession()
+    if (!target) throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
+    if (target.status !== 'IN_PROGRESS') {
+      throw new SpellingSessionError(`会话当前是 ${target.status}，不能提交`, 'SESSION_NOT_ACTIVE')
+    }
+    targetId = target.id
+  }
+
+  const now = options.now ?? Date.now()
+  let value!: T
+  let businessError: unknown = null
+  let nextSession: SpellingSession | undefined
+
+  try {
+    const res = await storage.updateAtomic('spellingSessions', targetId, (current) => {
+      if (!current) return { kind: 'abort', reason: 'SESSION_NOT_FOUND' }
+      if (current.status !== 'IN_PROGRESS') {
+        businessError = new SpellingSessionError(
+          `会话当前是 ${current.status}，不能提交`,
+          'SESSION_NOT_ACTIVE',
+        )
+        return { kind: 'skip' }
+      }
+      let out: { session: SpellingSession; value: T }
+      try {
+        out = fn(current)
+      } catch (err) {
+        businessError = err
+        return { kind: 'skip' }
+      }
+      value = out.value
+      const ids = options.settledEventIds ?? []
+      const withCredentials: SpellingSession =
+        ids.length === 0
+          ? out.session
+          : {
+              ...out.session,
+              applied_error_event_ids: {
+                ...(current.applied_error_event_ids ?? {}),
+                ...Object.fromEntries(ids.map((id) => [id, true as const])),
+              },
+            }
+      return mergeLockState(current, withCredentials, TAB_ID, now)
+    })
+    nextSession = res.value
+  } catch (err) {
+    if (err instanceof AtomicAbortError) throw toLockError(err.reason)
+    // 写不进去 = 什么都没有发生（不返回成功）
+    throw new SpellingSessionError('会话保存失败，请重试', 'WRITE_FAILED')
+  }
+
+  if (businessError) throw businessError
+  if (!nextSession) throw new SpellingSessionError('会话保存失败，请重试', 'WRITE_FAILED')
+  return { session: nextSession, value }
+}
+
+/* ------------------------------------------------------------------
+ * 跨表原子提交（U11 / U1 消除点）
+ * ------------------------------------------------------------------ */
+
+interface AtomicSubmitSpec<T> {
+  sessionId: string
+  now: number
+  requestId: string
+  wordId: string
+  compute: (current: SpellingSession) => { session: SpellingSession; value: T }
+  eventOf: (value: T) => SpellingErrorEventKind | null
+}
+
+type AtomicSubmitResult<T> =
+  | { kind: 'ok'; session: SpellingSession; value: T }
+  | { kind: 'reject'; reason: string }
+  | { kind: 'error'; error: unknown }
+
+/**
+ * 同一底层 rw 事务内完成：
+ *   读会话 → 严格校验 active_tab_id / lock_epoch → 业务纯函数状态机
+ *   → 写错词事件行（幂等）→ 同份会话写 applied_error_event_ids 凭证 → 写回。
+ *
+ * 因为事务 scope 覆盖 spellingSessions + spellingErrorEvents，另一标签的
+ * takeover 事务无法插入校验与写入之间：要么它先提交（本事务读到新锁并整笔
+ * 回滚，零事件落盘），要么它排队等本事务提交。U11 跨表 TOCTOU 与 U1
+ * C09/T29 残留窗口由此关闭，不再依赖事后 stale 收敛。
+ *
+ * 事务内只 await ctx 句柄，业务 compute 为同步纯函数（见 storage/types.ts 硬约束）。
+ */
+async function atomicSubmit<T>(
+  spec: AtomicSubmitSpec<T>,
+): Promise<{ session: SpellingSession; value: T }> {
+  const eventId = `evt:${spec.requestId}`
+  const batch = await storage.atomicBatch(
+    ['spellingSessions', 'spellingErrorEvents'] as const,
+    async (t): Promise<{ commit: boolean; result: AtomicSubmitResult<T> }> => {
+      const current = await t.spellingSessions.get(spec.sessionId)
+      if (!current) {
+        return { commit: false, result: { kind: 'reject', reason: 'SESSION_NOT_FOUND' } }
+      }
+      if (current.status !== 'IN_PROGRESS') {
+        return {
+          commit: false,
+          result: {
+            kind: 'error',
+            error: new SpellingSessionError(
+              `会话当前是 ${current.status}，不能提交`,
+              'SESSION_NOT_ACTIVE',
+            ),
+          },
+        }
+      }
+      const check = assertLockInTransaction(current, TAB_ID)
+      if (!check.ok) {
+        return { commit: false, result: { kind: 'reject', reason: check.reason } }
+      }
+
+      let out: { session: SpellingSession; value: T }
+      try {
+        out = spec.compute(current)
+      } catch (err) {
+        return { commit: false, result: { kind: 'error', error: err } }
+      }
+
+      const kind = spec.eventOf(out.value)
+      let next = out.session
+      // P0：凭证事务内二次检查。同 request_id 重放时凭证已存在 →
+      // 不重复写事件行、不重复写凭证、不重复施加 V2 业务效果（防重复归零）。
+      const credentialExists = current.applied_error_event_ids?.[eventId] !== undefined
+      if (kind && !credentialExists) {
+        const event = buildErrorEvent(
+          {
+            event_id: eventId,
+            session_id: spec.sessionId,
+            word_id: spec.wordId,
+            kind,
+            owner: current.owner,
+            occurred_at: spec.now,
+          },
+          TAB_ID,
+          check.epoch,
+          'settled',
+        )
+        // P0：owner / session / tab / lock_epoch 写入前校验，字段不符整笔回滚
+        const rowCheck = validateEventRow(event, current, TAB_ID, check.epoch)
+        if (!rowCheck.ok) {
+          return { commit: false, result: { kind: 'reject', reason: rowCheck.reason } }
+        }
+        await t.spellingErrorEvents.addIfAbsent(event)
+        // 凭证与业务状态写在同一份会话文档，同事务提交
+        next = {
+          ...next,
+          applied_error_event_ids: {
+            ...(current.applied_error_event_ids ?? {}),
+            [eventId]: true,
+          },
+        }
+      }
+      next = {
+        ...next,
+        active_tab_id: TAB_ID,
+        lock_epoch: check.epoch,
+        lock_held_at: spec.now,
+      }
+      await t.spellingSessions.put(next)
+      return { commit: true, result: { kind: 'ok', session: next, value: out.value } }
+    },
+  )
+
+  const result = batch.result
+  if (result.kind === 'error') throw result.error
+  if (result.kind === 'reject') {
+    if (result.reason === 'SESSION_NOT_FOUND') {
+      throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
+    }
+    throw toLockError(result.reason)
+  }
+  if (!batch.committed) {
+    throw new SpellingSessionError('会话保存失败，请重试', 'WRITE_FAILED')
+  }
+  return { session: result.session, value: result.value }
+}
+
+/* ------------------------------------------------------------------
+ * V2 逐字母提交（复用跨表原子批事务，不新建表 / 不改 schema）
+ * ------------------------------------------------------------------ */
+
+export interface SubmitLetterInput {
+  word_id: string
+  /** 单个字符 */
+  char: string
+  /** 幂等键：每次按键一个，重放原样回放、不重复计数 */
+  request_id: string
+  now?: number
+}
+
+export interface SubmitLetterResult {
+  session: SpellingSession
+  result: LetterResult
+  /** 错误提示音是否成功触发（反馈失败不影响判错正确性） */
+  tonePlayed: boolean
+  /** 本次是否真的落了一条新错误事件（重放为 false） */
+  errorInserted: boolean
+  srs: SrsHandoffOutcome
+}
+
+type AtomicLetterResult =
+  | { kind: 'ok'; session: SpellingSession; value: LetterResult; errorInserted: boolean }
+  | { kind: 'reject'; reason: string }
+  | { kind: 'error'; error: unknown }
+
+/**
+ * 同一底层 rw 事务内完成：
+ *   读会话 → 严格校验 active_tab_id / lock_epoch → applyLetter 纯状态机
+ *   → 若有错误字母，写 1 条错词事件行（event_id 幂等）与凭证 → 写回会话。
+ *
+ * 与 V1 atomicSubmit 的差异**仅**在业务纯函数与事件粒度：
+ *   · V1 一次整词提交最多 1 条事件；V2 每个错误字母 1 条事件；
+ *   · 错误字母不增加 total_attempts / wrong_attempts、不产生 srs_due；
+ *   · 事务边界、锁校验、owner/session/tab/epoch 校验、凭证幂等**完全沿用**。
+ */
+async function atomicLetter(
+  spec: { sessionId: string; now: number; requestId: string; wordId: string; char: string },
+): Promise<{ session: SpellingSession; value: LetterResult; errorInserted: boolean }> {
+  const eventId = letterEventId(spec.requestId)
+  const batch = await storage.atomicBatch(
+    ['spellingSessions', 'spellingErrorEvents'] as const,
+    async (t): Promise<{ commit: boolean; result: AtomicLetterResult }> => {
+      const current = await t.spellingSessions.get(spec.sessionId)
+      if (!current) {
+        return { commit: false, result: { kind: 'reject', reason: 'SESSION_NOT_FOUND' } }
+      }
+      if (current.status !== 'IN_PROGRESS') {
+        return {
+          commit: false,
+          result: {
+            kind: 'error',
+            error: new SpellingSessionError(
+              `会话当前是 ${current.status}，不能输入`,
+              'SESSION_NOT_ACTIVE',
+            ),
+          },
+        }
+      }
+      const check = assertLockInTransaction(current, TAB_ID)
+      if (!check.ok) {
+        return { commit: false, result: { kind: 'reject', reason: check.reason } }
+      }
+
+      let out: { session: SpellingSession; result: LetterResult }
+      try {
+        out = applyLetter(current, {
+          word_id: spec.wordId,
+          char: spec.char,
+          request_id: spec.requestId,
+          now: spec.now,
+        })
+      } catch (err) {
+        return { commit: false, result: { kind: 'error', error: err } }
+      }
+
+      let next = out.session
+      let errorInserted = false
+      const errSpec = out.result.error
+      // 凭证事务内二次检查：同一 request_id 重放不重复落行、不重复写凭证
+      const credentialExists = current.applied_error_event_ids?.[eventId] !== undefined
+      if (errSpec && !credentialExists) {
+        const base = buildErrorEvent(
+          {
+            event_id: eventId,
+            session_id: spec.sessionId,
+            word_id: spec.wordId,
+            kind: LETTER_ERROR_KIND,
+            owner: current.owner,
+            occurred_at: spec.now,
+          },
+          TAB_ID,
+          check.epoch,
+          'settled',
+        )
+        // 行内可选诊断字段，零 schema 变更
+        const event: LetterErrorEvent = {
+          ...base,
+          letter_index: errSpec.letter_index,
+          typed_char: errSpec.typed_char,
+          expected_char: errSpec.expected_char,
+          word_snapshot: errSpec.word_snapshot,
+          error_source: 'letter',
+        }
+        const rowCheck = validateEventRow(event, current, TAB_ID, check.epoch)
+        if (!rowCheck.ok) {
+          return { commit: false, result: { kind: 'reject', reason: rowCheck.reason } }
+        }
+        errorInserted = await t.spellingErrorEvents.addIfAbsent(event)
+        if (errorInserted) {
+          next = {
+            ...next,
+            applied_error_event_ids: {
+              ...(current.applied_error_event_ids ?? {}),
+              [eventId]: true,
+            },
+          }
+        }
+      }
+      next = {
+        ...next,
+        active_tab_id: TAB_ID,
+        lock_epoch: check.epoch,
+        lock_held_at: spec.now,
+      }
+      await t.spellingSessions.put(next)
+      return {
+        commit: true,
+        result: { kind: 'ok', session: next, value: out.result, errorInserted },
+      }
+    },
+  )
+
+  const result = batch.result
+  if (result.kind === 'error') throw result.error
+  if (result.kind === 'reject') {
+    if (result.reason === 'SESSION_NOT_FOUND') {
+      throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
+    }
+    throw toLockError(result.reason)
+  }
+  if (!batch.committed) throw new SpellingSessionError('会话保存失败，请重试', 'WRITE_FAILED')
+  return { session: result.session, value: result.value, errorInserted: result.errorInserted }
+}
+
+/**
+ * 提交一个字符（V2 主路径）。
+ * 错误字母：立即 1 条事件 + 进度清零 + 连对归零 + 立即播放提示音；
+ * 正确字母：推进进度，拼完整个词才算一次完整答题提交，达标才完成并切换。
+ */
+export async function submitLetter(input: SubmitLetterInput): Promise<SubmitLetterResult> {
+  const now = input.now ?? Date.now()
   const target = await getResumableSession()
   if (!target) throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
   if (target.status !== 'IN_PROGRESS') {
-    throw new SpellingSessionError(`会话当前是 ${target.status}，不能提交`, 'SESSION_NOT_ACTIVE')
+    throw new SpellingSessionError(`会话当前是 ${target.status}，不能输入`, 'SESSION_NOT_ACTIVE')
   }
-  const out = fn(target)
-  try {
-    await SESSIONS.put(out.session)
-  } catch {
-    // 写不进去 = 什么都没有发生（不返回成功）。语义上是「保存失败」而不是状态违规，
-    // 所以用 WRITE_FAILED 而不是 SESSION_NOT_ACTIVE。
-    throw new SpellingSessionError('会话保存失败，请重试', 'WRITE_FAILED')
+
+  const out = await atomicLetter({
+    sessionId: target.id,
+    now,
+    requestId: input.request_id,
+    wordId: input.word_id,
+    char: input.char,
+  })
+
+  // 反馈层：只在真正落了新错误事件时播放；重放不重复播放，失败不影响判错
+  const tonePlayed = out.value.outcome === 'wrong' && out.errorInserted
+    ? speechService.playErrorTone()
+    : false
+
+  // 仅整词达标完成时才交接 SRS；错误字母恒不触发（规则 8）
+  let session = out.session
+  let srs: SrsHandoffOutcome = 'none'
+  if (out.value.srs_due) {
+    const handoff = await fulfillSrsHandoff(session, now)
+    session = handoff.session
+    srs = handoffOutcome(handoff.work)
   }
-  return out
+  return { session, result: out.value, tonePlayed, errorInserted: out.errorInserted, srs }
 }
 
 /* ------------------------------------------------------------------
@@ -230,7 +628,14 @@ export async function createSession(input: {
     throw new SpellingSessionError('没有可练习的词条', 'SESSION_CONFLICT')
   }
 
-  await SESSIONS.put(session)
+  // 新会话即时初始化跨标签锁（行内可选字段，无 schema 变更）；
+  // 升级前创建的老会话没有这些字段，由 mutate 的 CAS reducer 按需初始化。
+  await SESSIONS.put({
+    ...session,
+    active_tab_id: TAB_ID,
+    lock_epoch: 0,
+    lock_held_at: now,
+  })
 
   // 写后复核：确认落库的就是我们刚写的那一份（防止同 id 被并发覆盖）
   const reread = await SESSIONS.get(session.id)
@@ -250,17 +655,37 @@ export async function createSession(input: {
  * 提交 / 跳过 / 生命周期
  * ------------------------------------------------------------------ */
 
+/**
+ * 提交一次拼写：整条链路收进**同一个跨表事务**。
+ * 不再有「预演 → 独立事件写入 → 独立会话 CAS」的三段式窗口。
+ */
 export async function submitAttempt(input: SubmitAttemptInput): Promise<SubmitAttemptResult> {
-  const out = await mutate<AttemptResult>((s) => {
-    const r = applyAttempt(s, {
-      word_id: input.word_id,
-      input: input.input,
-      request_id: input.request_id,
-      now: input.now,
-    })
-    return { session: r.session, value: r.result }
+  const now = input.now ?? Date.now()
+  const target = await getResumableSession()
+  if (!target) throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
+  if (target.status !== 'IN_PROGRESS') {
+    throw new SpellingSessionError(`会话当前是 ${target.status}，不能提交`, 'SESSION_NOT_ACTIVE')
+  }
+
+  const out = await atomicSubmit<AttemptResult>({
+    sessionId: target.id,
+    now,
+    requestId: input.request_id,
+    wordId: input.word_id,
+    compute: (s) => {
+      const r = applyAttempt(s, {
+        word_id: input.word_id,
+        input: input.input,
+        request_id: input.request_id,
+        now,
+      })
+      return { session: r.session, value: r.result }
+    },
+    eventOf: (r) =>
+      r.result === 'wrong' ? 'wrong' : r.result === 'skipped' ? 'skip' : null,
   })
-  const { session, work } = await fulfillSrsHandoff(out.session, input.now)
+
+  const { session, work } = await fulfillSrsHandoff(out.session, now)
   return { session, result: out.value, srs: handoffOutcome(work) }
 }
 
@@ -269,13 +694,27 @@ export async function skip(input: {
   request_id: string
   now?: number
 }): Promise<{ session: SpellingSession; result: AttemptResult }> {
-  const out = await mutate<AttemptResult>((s) => {
-    const r = skipWord(s, {
-      word_id: input.word_id,
-      request_id: input.request_id,
-      now: input.now,
-    })
-    return { session: r.session, value: r.result }
+  const now = input.now ?? Date.now()
+  const target = await getResumableSession()
+  if (!target) throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
+  if (target.status !== 'IN_PROGRESS') {
+    throw new SpellingSessionError(`会话当前是 ${target.status}，不能提交`, 'SESSION_NOT_ACTIVE')
+  }
+
+  const out = await atomicSubmit<AttemptResult>({
+    sessionId: target.id,
+    now,
+    requestId: input.request_id,
+    wordId: input.word_id,
+    compute: (s) => {
+      const r = skipWord(s, {
+        word_id: input.word_id,
+        request_id: input.request_id,
+        now,
+      })
+      return { session: r.session, value: r.result }
+    },
+    eventOf: (r) => (r.result === 'skipped' ? 'skip' : null),
   })
   return { session: out.session, result: out.value }
 }
@@ -290,7 +729,7 @@ export async function resume(now = Date.now()): Promise<SpellingSession> {
   const target = await getResumableSession()
   if (!target) throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
   const next = resumeSession(target, now)
-  await SESSIONS.put(next)
+  await commitSessionWithLock(target.id, next, now)
   return next
 }
 
@@ -298,7 +737,7 @@ export async function abandon(now = Date.now()): Promise<SpellingSession> {
   const target = await getResumableSession()
   if (!target) throw new SpellingSessionError('没有可恢复的默写会话', 'NO_ACTIVE_SESSION')
   const next = abandonSession(target, now)
-  await SESSIONS.put(next)
+  await commitSessionWithLock(target.id, next, now)
   return next
 }
 
@@ -332,7 +771,7 @@ export async function refreshAvailability(): Promise<{
     word_ids: gone,
     reason: 'vocab-entry-deleted',
   })
-  await SESSIONS.put(next)
+  await commitSessionWithLock(target.id, next)
   return { session: next, marked: gone }
 }
 
@@ -460,7 +899,7 @@ async function fulfillSrsHandoff(
 
   if (work.reported.length + work.dropped.length > 0) {
     try {
-      await SESSIONS.put(current)
+      await commitSessionWithLock(current.id, current, now)
     } catch {
       // 标记落库失败 ≠ 本次作答失败：mutate 已经把计数/状态/队列推进落库了，
       // 用户看到的答案结果是有效的。这里只把「交接未落标记」如实降级：

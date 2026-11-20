@@ -1,0 +1,41 @@
+PASS U0 种子词条写入（App 已建库到 v14） — words=2
+PASS U1a 取锁/恢复链完成后逐字母输入框启用 — inputEnabled=true
+PASS U1b 会话已创建且能定位当前词 — answer=benefit
+PASS U1c 正确字母推进输入进度（持久化） — typed_prefix=b
+PASS U1d 正确字母不产生错词事件 — events=0
+PASS U1e 正确字母不构成完整答题提交 — total_attempts=0
+PASS U1f 页面渲染逐字母进度（DOM 文本） — progress=b _ _ _ _ _ _
+PASS U1g 页面渲染「正确」反馈（DOM 属性） — outcome=correct
+PASS U2a 错误字母即时落 1 条错词事件 — events=1
+PASS U2b 事件为逐字母来源且记录字母位置 — source=letter index=1
+PASS U2c 错误后输入进度清零（持久化） — typed_prefix=""
+PASS U2d 错误后连续正确次数归零 — consecutive_correct=0
+PASS U2e 错误不增加 total_attempts — total_attempts=0
+PASS U2f 错误不触发 SRS（reviewLog 无新增） — reviewLog=0
+PASS U2g 页面渲染「错误 + 从头开始」反馈（DOM） — outcome=wrong
+PASS U2h 错误反馈文案含「从第一个字母重新开始」 — text=字母不对，已从第一个字母重新开始（连对归零）
+PASS U3a 同一单词连续两个错误字母 = 2 条独立事件 — events=2
+PASS U3b 两个事件 event_id 不同 — ids=evt:letter:7bba77ff-e240-4dd8-876a-0bbb430c0216,evt:letter:9a2dda79-3a73-4717-b806-25f707c3e2f6
+PASS U4 拼完整个单词才计一次完整答题提交 — total_attempts=1,0
+PASS U5 全程逐字母输入后错词事件数不回退 — events=2
+PASS R1a 结果页渲染「当前活动错词事件数」= 1 — active="1"
+PASS R1b 结果页渲染「历史错误事件行数」= 4 — total="4"
+PASS R1c 两个指标分别标注、名称不同 — labels=["1当前活动错词事件数","4历史错误事件行数"]
+PASS R3 stale / 已移除记录的排除提示已渲染 — text=已排除 2 条旧代次或被移除的记录
+PASS R4 ORPHAN / 无法归类异常提示已渲染 — text=另有 1 条记录无法归类（会话文档缺失或代次字段不全），未计入活动错词
+PASS R6a 当前账号范围说明已渲染 — text=仅统计当前账号在本会话内的错词事件，不含其它账号或设备的数据
+PASS R6b 错词本区块也标注当前账号范围 — text=仅统计当前账号在本会话内的错词事件，不含其它账号或设备的数据
+PASS R7a 错词本按词合并渲染 1 条记录 — rows=1
+PASS R7b 错词本渲染活动/历史条数 — text=abandon活动错词 1 条 · 历史 4 条 · 最近 20:20:13
+PASS R7c 错词本词条文本来自事件快照 — word=abandon
+PASS R2a reset 覆盖后 active = 0 — active="0"
+PASS R2b reset 覆盖后 total 仍为 4（历史不物理删除） — total="4"
+PASS R5a 空数据渲染 EmptyState「本轮没有错词事件」 — found=true
+PASS R5b 空数据不显示统计数字卡片 — stat-active 不存在
+
+────────────────────────────────────────────────────────────────
+V2 浏览器渲染验收：34 通过 / 0 失败（34 项）
+N/A  真实移动设备与软键盘（仅桌面 Edge 视口模拟）
+N/A  跨内核矩阵（仅 Chromium 内核 Edge，无独立 Chrome / Firefox）
+N/A  错误提示音的实际发声（无音频采集；自动化层以 playErrorTone 调用计数断言）
+N/A  IDB 事务逐拍 in-flight 中断时序（浏览器无法精确注入）

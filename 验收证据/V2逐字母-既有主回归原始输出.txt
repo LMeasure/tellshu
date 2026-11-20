@@ -1,0 +1,18 @@
+PASS R1 单标签取锁成功后输入框启用 — inputEnabled=true
+PASS R2 5 个错误字母落 5 条独立错词事件且全部已结算 — events=5 wrong=5 settled=5
+PASS R2b 会话文档写入结算凭证与锁代次 — epoch=0 credentials=5
+  [evidence] 独立标签身份=true，bundle=index-B94WSCYO.js
+PASS R3 第二标签页进入同一会话显示冲突面板（未静默并发）
+PASS R4 用户显式接管后新标签可输入 — clicked=true
+PASS R4b 接管使 fencing token 原子 +1 — epoch=1
+PASS R5 旧标签继续写入被拒并进入只读冲突面板
+PASS R6 刷新后恢复链完成、输入启用且无遗留 pending — inputEnabled=true pending=0 sessions=1
+PASS R7a 触发 versionchange 且升级事务回滚（未产生新版本） — result=error:AbortError
+PASS R7b 升级中断后重启：事件与会话不丢、无 pending、输入恢复 — inputEnabled=true events=5 pending=0 sessions=1
+
+────────────────────────────────────────────────────────────
+真机回归：10 通过 / 0 失败（10 项）
+N/A  in-flight 事务在 db.close() 瞬间中止的逐拍时序（浏览器无法精确注入）
+N/A  升级中途 kill 浏览器进程后重启（需独立设备与进程控制）
+N/A  Chromium / Firefox 跨内核矩阵
+N/A  真实移动端设备与软键盘

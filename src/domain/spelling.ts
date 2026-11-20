@@ -100,6 +100,12 @@ export interface SpellingWordState {
   unavailable_reason?: string
   /** D2：是否已经把「完成」交接给过 SRS，防止恢复会话后重复 recordQuiz */
   srs_reported: boolean
+  /**
+   * V2 逐字母：本轮已正确输入的字母前缀（错误后清零）。
+   * 行内可选字段，内嵌在会话文档里，随整份 put 原子落库；不改 Dexie schema、不迁移。
+   * 老会话（V1）没有该字段 → 按 '' 处理，即从第一个字母开始。
+   */
+  typed_prefix?: string
 }
 
 /** 一次提交的完整响应，同时也是写进 processed_requests 的回放值 */
@@ -143,9 +149,35 @@ export interface SpellingSession {
   ended_at?: number
   paused_at?: number
   queue: SpellingWordState[]
-  /** request_id → 原处理结果（幂等回放） */
+  /** request_id → 原处理结果（幂等回放，V1 整词提交） */
   processed_requests: Record<string, AttemptResult>
+  /**
+   * V2 逐字母：request_id → 原字母处理结果（幂等回放）。
+   * 行内可选字段，零 schema 变更；老会话无此字段按 {} 处理。
+   * 体积随按键增长，保留策略见 P2 剩余问题清单（本轮不擅自清理）。
+   */
+  processed_letters?: Record<string, import('./spellingTyping').LetterResult>
+
+  /* ---- 跨标签单写者锁 / 错词事件凭证（行内可选字段，无 Dexie schema 变更） ----
+   * 老会话（V1 时期创建）没有这些字段，取锁时按需初始化，不迁移、不回填。
+   * 权威结算依据是 applied_error_event_ids；事件表的 status 只是展示态。 */
+  /** 当前持锁标签 id；空 = 尚未取锁 */
+  active_tab_id?: string
+  /** fencing token：每次成功 takeover 原子 +1 */
+  lock_epoch?: number
+  /** 最近一次取锁/续期时间（软租约，用于过期接管） */
+  lock_held_at?: number
+  /**
+   * 已结算错词事件凭证：event_id → 结算结论（drain 幂等的唯一权威）。
+   * true 兼容 V1 / 实施 B 已落库的老数据（语义 = 'zeroed'）；
+   * 'zeroed' = 本代次已结算、计入活动错词；'stale' = 旧代次已终结、不计入活动错词。
+   * 行内可选字段，不改 Dexie stores() / version，历史文档无需回填。
+   */
+  applied_error_event_ids?: Record<string, SpellingErrorCredential>
 }
+
+/** 结算凭证取值（1.2.3 §1.3「凭证优先于代次」） */
+export type SpellingErrorCredential = true | 'zeroed' | 'stale'
 
 export interface SessionStats {
   total_words: number
@@ -416,16 +448,19 @@ export function aggregateSession(session: SpellingSession, now = Date.now()): Se
  * 内部工具
  * ------------------------------------------------------------------ */
 
-function isTerminal(w: SpellingWordState): boolean {
+/** V1/V2 共用的终态判定（导出供 V2 逐字母状态机复用，规则单一来源） */
+export function isTerminal(w: SpellingWordState): boolean {
   return w.status === 'COMPLETED' || w.status === 'SKIPPED' || w.status === 'UNAVAILABLE'
 }
 
 /** 结构化克隆会话文档：保持"不修改入参"的纯度，同时让调用方拿到可直接 put 的新对象 */
-function cloneSession(s: SpellingSession): SpellingSession {
+export function cloneSession(s: SpellingSession): SpellingSession {
   return {
     ...s,
     queue: s.queue.map((w) => ({ ...w })),
     processed_requests: { ...s.processed_requests },
+    // V2 逐字母幂等回放表：整份 put 时必须保留，否则刷新后重放会重复计数
+    ...(s.processed_letters ? { processed_letters: { ...s.processed_letters } } : {}),
   }
 }
 
@@ -433,7 +468,8 @@ function cloneSession(s: SpellingSession): SpellingSession {
  * 队列推进：找第一个未终态的词；一个都没有 → 会话自然结束。
  * 统一的收口可以保证「计数更新 / 状态变更 / 队列推进」永远同批发生。
  */
-function advance(session: SpellingSession, now: number): void {
+/** V1/V2 共用的队列推进（导出供 V2 复用，保证切换规则不漂移） */
+export function advance(session: SpellingSession, now: number): void {
   const next = session.queue.filter((w) => !isTerminal(w)).sort((a, b) => a.position - b.position)[0]
   if (!next) {
     session.status = 'SESSION_COMPLETED'

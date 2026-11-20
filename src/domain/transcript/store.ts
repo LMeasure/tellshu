@@ -17,6 +17,8 @@
  */
 
 import { storage } from '@/services/storage'
+import { saveReading } from '@/domain/learning'
+import type { ReadingDoc } from '@/domain/learning'
 import type {
   StudyNoteBilingualNote,
   StudyNoteRecord,
@@ -25,6 +27,7 @@ import type {
   StudyNoteVocabulary,
   Transcript,
   TranscriptRecord,
+  TranscriptSegment,
 } from './types'
 
 /** transcripts.source：目前只有 ASR 一条来源 */
@@ -48,6 +51,7 @@ export function toTranscriptRecord(t: Transcript, nowMs: number = Date.now()): T
     language: t.language,
     duration: t.duration,
     segments: t.segments,
+    fileName: t.fileName,
     created_at: nowMs,
     source: TRANSCRIPT_SOURCE_ASR,
   }
@@ -57,6 +61,90 @@ export async function saveTranscriptRecord(t: Transcript): Promise<TranscriptRec
   const record = toTranscriptRecord(t)
   await storage.table('transcripts').put(record)
   return record
+}
+
+/* ------------------------------------------------------------------ */
+/* 转写 -> 阅读器资料（复用 learning.saveReading 领域入口，不绕过领域层）  */
+/* ------------------------------------------------------------------ */
+
+/** 全段拼成纯文本（供阅读器文本视图；时间戳单独存 segments）。 */
+function transcriptToText(segments: readonly TranscriptSegment[]): string {
+  return segments
+    .map((s) => s.text.trim())
+    .filter((t) => t !== '')
+    .join('\n')
+}
+
+/**
+ * 把一次转写结果登记为阅读器可读取的资料。
+ * 幂等键：reading id = `t_${transcript.id}`（与 ASR job_id 对齐）；
+ * 重复登记覆盖同行（saveReading 保留 created_at / 进度 / 书架状态），
+ * 不产生第二份资料，也不要求用户重新导入。
+ *
+ * ⚠️ 不传 last_page：saveReading 的口径是 `input.last_page ?? prev?.last_page ?? 0`，
+ * 显式传 0 会把已有阅读进度清零（0 ?? prev = 0）；缺省才走「保留原进度」分支。
+ */
+export async function ensureTranscriptReading(
+  transcript: Transcript,
+  fileName: string,
+): Promise<ReadingDoc> {
+  return saveReading({
+    id: `t_${transcript.id}`,
+    title: fileName || '字幕素材',
+    type: 'transcript',
+    content: transcriptToText(transcript.segments),
+    segments: transcript.segments,
+  })
+}
+
+/**
+ * 历史补齐：遍历已落库转写，对尚无对应 reading 的创建（幂等键 t_<id>）。
+ * 已存在则跳过——绝不覆盖用户可能在阅读器里的进度/书架改动，绝不重生成字幕。
+ * 返回 {created, skipped} 供诊断。
+ */
+export async function backfillTranscriptReadings(): Promise<{ created: number; skipped: number }> {
+  const records = await listTranscriptRecords()
+  let created = 0
+  let skipped = 0
+  for (const rec of records) {
+    const id = `t_${rec.id}`
+    const existing = await storage.table('readings').get(id)
+    if (existing !== undefined) {
+      skipped += 1
+      continue
+    }
+    await saveReading({
+      id,
+      title: rec.fileName || '字幕素材',
+      type: 'transcript',
+      content: transcriptToText(rec.segments),
+      segments: rec.segments,
+    })
+    created += 1
+  }
+  return { created, skipped }
+}
+
+/** 最近一条转写（按 created_at 倒序）；无则返回 undefined。供 UI 挂载回读。 */
+export async function getLatestTranscriptRecord(): Promise<TranscriptRecord | undefined> {
+  const all = await listTranscriptRecords()
+  if (all.length === 0) return undefined
+  return all.sort((a, b) => b.created_at - a.created_at)[0]
+}
+
+/**
+ * 启动期一次性补齐历史转写→阅读器关联（幂等、便宜）。
+ * 失败不影响启动（仅告警），与 initStorage 的兜底口径一致。
+ */
+export async function reconcileTranscriptReadings(): Promise<void> {
+  try {
+    const { created, skipped } = await backfillTranscriptReadings()
+    if (created > 0) {
+      console.info(`[transcript] 补齐历史转写资料 ${created} 条（已存在 ${skipped} 条）`)
+    }
+  } catch (e) {
+    console.warn('[transcript] 历史转写补齐失败（不影响使用）：', e)
+  }
 }
 
 export async function getTranscriptRecord(id: string): Promise<TranscriptRecord | undefined> {

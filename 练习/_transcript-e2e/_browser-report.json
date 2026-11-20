@@ -1,0 +1,261 @@
+{
+  "startedAt": "2026-10-22T10:46:51.005Z",
+  "base": "http://127.0.0.1:4174",
+  "fixture": {
+    "id": "2bc71d3f-e37d-4e22-ab44-28021e4bcabc",
+    "segments": 257,
+    "duration": 604.65
+  },
+  "checks": [
+    {
+      "id": "T1",
+      "name": "夹具：真实 257 段转写写入 transcripts（隔离测试 profile）",
+      "ok": true,
+      "detail": "257 段"
+    },
+    {
+      "id": "T2.1",
+      "name": "刷新后字幕页回读最近转写（257 段可见）",
+      "ok": true,
+      "detail": "257 段"
+    },
+    {
+      "id": "T2.2",
+      "name": "回读后导出按钮齐全（TXT/SRT/VTT/CSV/JSON）",
+      "ok": true,
+      "detail": "CSV/JSON 按钮已渲染"
+    },
+    {
+      "id": "T2.3",
+      "name": "回读后学习稿面板可用",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T3.1",
+      "name": "启动期自动补齐：readings 出现 t_<jobId> 资料",
+      "ok": true,
+      "detail": "id=t_2bc71d3f-e37d-4e22-ab44-28021e4bcabc"
+    },
+    {
+      "id": "T3.2",
+      "name": "补齐资料含全部 257 段（不截断）",
+      "ok": true,
+      "detail": "257 段"
+    },
+    {
+      "id": "T3.3",
+      "name": "补齐资料时间戳与源数据逐段一致（不重生成）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T3.4",
+      "name": "补齐资料正文 = 全段拼接（阅读器文本视图）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T3.5",
+      "name": "补齐资料类型/标题正确",
+      "ok": true,
+      "detail": "transcript / 真实转写素材.mp4"
+    },
+    {
+      "id": "T4.1",
+      "name": "「我的素材」出现字幕条目且点击进入阅读器",
+      "ok": true,
+      "detail": "url=http://127.0.0.1:4174/reader/t_2bc71d3f-e37d-4e22-ab44-28021e4bcabc"
+    },
+    {
+      "id": "T4.2",
+      "name": "阅读器打开资料且正文含首段文本",
+      "ok": true,
+      "detail": "10月16日 《人民日報"
+    },
+    {
+      "id": "T4.3",
+      "name": "阅读器头部标识为「字幕」",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T5.0",
+      "name": "CSV 点击后真实落盘（Downloads 目录出现新文件）",
+      "ok": true,
+      "detail": "真实转写素材-字幕.csv"
+    },
+    {
+      "id": "T5.1",
+      "name": "CSV 文件名带正确扩展名",
+      "ok": true,
+      "detail": "真实转写素材-字幕.csv"
+    },
+    {
+      "id": "T5.1b",
+      "name": "CSV MIME 为 text/csv;charset=utf-8",
+      "ok": true,
+      "detail": "text/csv;charset=utf-8"
+    },
+    {
+      "id": "T5.2",
+      "name": "CSV 带 UTF-8 BOM（Excel 中文兼容）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T5.3",
+      "name": "CSV 首行为列名 index,start_time,end_time,text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T5.4",
+      "name": "CSV 数据行数 = 实际段数 257",
+      "ok": true,
+      "detail": "257 行"
+    },
+    {
+      "id": "T5.5",
+      "name": "CSV 首行内容与源数据一致",
+      "ok": true,
+      "detail": "1|0.000|3.780|10月16日 《人民日報》刊發社論文章"
+    },
+    {
+      "id": "T5.6",
+      "name": "CSV 末行序号连续（257）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T5.7",
+      "name": "TXT 真实落盘、行数 = 非空段数、MIME 正确",
+      "ok": true,
+      "detail": "257 行 / text/plain;charset=utf-8"
+    },
+    {
+      "id": "T5.8",
+      "name": "TXT 无时间戳（纯文本）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T5.9",
+      "name": "SRT 257 块、序号连续、时间码合法、MIME 正确",
+      "ok": true,
+      "detail": "257 块 / application/x-subrip;charset=utf-8"
+    },
+    {
+      "id": "T5.10",
+      "name": "SRT 首块文本与源数据一致",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T5.11",
+      "name": "VTT 带 WEBVTT 头、点号时间码、MIME 正确",
+      "ok": true,
+      "detail": "text/vtt;charset=utf-8"
+    },
+    {
+      "id": "T5.12",
+      "name": "JSON 真实落盘、可解析、segments 与源数据深等、MIME 正确",
+      "ok": true,
+      "detail": "application/json;charset=utf-8"
+    },
+    {
+      "id": "T6.1",
+      "name": "学习稿真实生成成功（四要素展示）",
+      "ok": true,
+      "detail": "18.1s"
+    },
+    {
+      "id": "T6.2",
+      "name": "学习稿按 transcript_id 落库（可刷新复读）",
+      "ok": true,
+      "detail": "1 条"
+    },
+    {
+      "id": "T6.3",
+      "name": "刷新后学习稿仍显示（持久化）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "T6.5",
+      "name": "中文原句点词如实显示「词库未收录」且禁用跳转",
+      "ok": true,
+      "detail": "舉國词库未收录这个词，暂时没有释义查看详情 "
+    },
+    {
+      "id": "T6.4",
+      "name": "点英文句单词弹出释义（查词链路通）",
+      "ok": true,
+      "detail": "「The」→ The/ðə/art. 定冠词，用于特指已知或唯一的事物查看详情 "
+    },
+    {
+      "id": "T6.6",
+      "name": "「查看详情」跳转单词详情页且渲染该词",
+      "ok": true,
+      "detail": "/word/the · The"
+    },
+    {
+      "id": "T7",
+      "name": "多次刷新后资料仍只有 1 条（幂等去重）",
+      "ok": true,
+      "detail": "1 条"
+    },
+    {
+      "id": "T7.2",
+      "name": "源转写记录未被补齐逻辑改动",
+      "ok": true,
+      "detail": "1 条"
+    }
+  ],
+  "downloads": [
+    {
+      "ariaLabel": "导出 CSV",
+      "suggested": "真实转写素材-字幕.csv",
+      "bytes": 12622
+    },
+    {
+      "ariaLabel": "导出 TXT",
+      "suggested": "真实转写素材-字幕.txt",
+      "bytes": 7355
+    },
+    {
+      "ariaLabel": "导出 SRT",
+      "suggested": "真实转写素材-字幕.srt",
+      "bytes": 16242
+    },
+    {
+      "ariaLabel": "导出 VTT",
+      "suggested": "真实转写素材-字幕.vtt",
+      "bytes": 15330
+    },
+    {
+      "ariaLabel": "导出 JSON",
+      "suggested": "真实转写素材-字幕.json",
+      "bytes": 26208
+    }
+  ],
+  "screenshots": [
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_transcript-e2e\\t2-media-tab.png",
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_transcript-e2e\\t4-reader.png",
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_transcript-e2e\\t5-exports.png",
+    "C:\\Users\\lagom\\WorkBuddy\\2026-10-02-10-40-40\\shutree\\述树交付包\\练习\\_transcript-e2e\\t6-study-note.png"
+  ],
+  "notVerified": [
+    "像素级视觉（重叠/溢出/遮挡）未覆盖——无布局断言，仅功能与数据校验",
+    "用户真实浏览器中的历史数据由同一代码路径处理，本脚本用隔离测试 profile 验证"
+  ],
+  "cleanedDownloads": [
+    "真实转写素材-字幕.csv",
+    "真实转写素材-字幕.json",
+    "真实转写素材-字幕.srt",
+    "真实转写素材-字幕.txt",
+    "真实转写素材-字幕.vtt"
+  ],
+  "finishedAt": "2026-10-22T10:47:32.093Z",
+  "failures": 0
+}

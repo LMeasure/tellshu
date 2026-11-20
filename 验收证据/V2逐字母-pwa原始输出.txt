@@ -1,0 +1,21 @@
+PWA 构建产物体检
+  dist: C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\dist
+
+[1] sw.js 无悬空标识符
+  ✓ 未发现悬空标识符
+[2] 运行时路由规则
+  ✓ NetworkFirst   cache=shushu-index   /\/linguabase\/v\d+\/(?:index|manifest|catalog)\.json$|\/linguabase\/v\d+\/(?:themes|bank)\/index\.json$/
+  ✓ CacheFirst     cache=shushu-data    /\/linguabase\/v\d+\//
+[3] URL 分流验证（用 sw.js 里的正则实测）
+  ✓ 18 个 URL 全部命中预期策略（含跨域与 v2/v3）
+[4] 预缓存清单
+  ✓ 15 项预缓存，全部为应用外壳（无词库数据）
+[5] manifest.webmanifest
+  ✓ 3 个图标，含 maskable；display=standalone
+[6] index.html
+  ✓ manifest 链接
+  ✓ SW 注册脚本
+  ✓ iOS 主屏图标
+  ✓ iOS 独立窗口 meta
+
+✅ PWA 构建产物体检通过（10 项）

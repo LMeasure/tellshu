@@ -1,0 +1,309 @@
+-- =============================================================================
+-- WP-02 隔离 SQL 草稿 · 禁止执行 / DESIGN DRAFT · DO NOT EXECUTE
+-- =============================================================================
+-- 文件性质：静态设计草稿。扩展名 .sql.draft（不是 .sql），不位于 server/sql/，
+--           不属于任何迁移链（001_init.sql / 004_convert.sql 等正式迁移文件）。
+-- 本轮纪律：未连接 PostgreSQL、未执行任何 DDL/DML/GRANT、未创建任何数据库对象。
+--           本文件仅作为「定义完整性可被静态检查」的机器可读文本存在。
+-- 依据：V1.2.30 §5.1 / §7.4 / §9 / §14；V1.2.28 §4.4；V1.2.29 §9.2；
+--       V1.2.19 §6（E-2 manifest）；PG18 官方 PG-02 9.28.3 / PG-01 25.3.4。
+-- 校验器：verify_stage_evidence.py（只做文本/数量/引用静态检查，不执行 SQL）。
+-- 注意：所有对象均为【设计提案】，入 schema 需 O-4A 授权 + 纯 PG 预演全绿。
+-- =============================================================================
+-- 【静态一致性检查结论 F-01】V1.2.30 §5.1 L281 的
+--   CHECK ((verifier_id IS DISTINCT FROM <collector_id>) IS TRUE)
+-- 是占位符：CHECK 不能跨表引用 r2_evidence_record.collector_id，该 DDL 不可执行。
+-- 本草稿改用 TRG-01 触发器跨表 JOIN 校验（见下）。上游文档不修改，仅在此登记。
+-- 【静态一致性检查结论 F-02】FK 引用顺序：object_outbox(既有) →
+--   evidence_signing_key → r2_evidence_record → r2_evidence_verification →
+--   r2_evidence_consumption；避免引用尚未创建的对象。
+-- 【静态一致性检查结论 F-03】CHECK 全部用 ((...) IS TRUE) 包裹，防 UNKNOWN-through。
+-- 【静态一致性检查结论 F-04】r2_evidence_consumption 值域不含 revoked；T-E5/T-E6/T-E7
+--   由 TRG-02 强制。
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- OBJ-02 evidence_signing_key（append-only 密钥版本表）
+-- ---------------------------------------------------------------------------
+CREATE TABLE shutree_sec.evidence_signing_key (
+    key_id          text PRIMARY KEY,
+    subject_id      text NOT NULL,
+    subject_type    text NOT NULL,
+    public_key      bytea NOT NULL,
+    org_unit        text NOT NULL,
+    valid_from      timestamptz NOT NULL,
+    valid_to        timestamptz,
+    revoked_at      timestamptz,
+    compromised_at  timestamptz,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    CHECK (((valid_to IS NULL OR valid_from < valid_to)) IS TRUE),
+    CHECK (((revoked_at IS NULL OR revoked_at >= valid_from)) IS TRUE)
+);
+-- 权限：REVOKE UPDATE, DELETE, TRUNCATE ON shutree_sec.evidence_signing_key FROM PUBLIC, shutree_app, shutree_worker;
+-- 轮换 = 新 key_id INSERT；不 UPDATE 旧行。
+
+-- ---------------------------------------------------------------------------
+-- OBJ-03 r2_evidence_record（append-only 证据本体，六通道共享 sid）
+-- 15 项绑定由 DB 触发器从 object_outbox 既有行覆写，不接受 INSERT 提供值。
+-- ---------------------------------------------------------------------------
+CREATE TABLE shutree_sec.r2_evidence_record (
+    evidence_record_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evidence_snapshot_id  uuid NOT NULL,
+    channel               text NOT NULL,
+    op_type               text NOT NULL,
+    bound_outbox_id       uuid NOT NULL REFERENCES app.object_outbox(outbox_id),
+    bound_request_id      text NOT NULL,
+    bound_attempt_no      bigint NOT NULL,
+    bound_lease_epoch     bigint NOT NULL,
+    bound_worker_id       text NOT NULL,
+    bound_environment     text NOT NULL,
+    bound_bucket          text NOT NULL,
+    bound_canonical_key   text NOT NULL,
+    r2_operation_id       text,               -- 真实能力不支持 → 恒 NULL（A4 恒 FALSE）
+    evidence_version      text NOT NULL,
+    collected_at          timestamptz NOT NULL,
+    collector_id          text NOT NULL,
+    collector_role        text NOT NULL,
+    collector_org_unit    text NOT NULL,   -- 第九轮修正：补 org_unit 列，使 §1 TRG-01 的「org_unit 相异」三主体分离可由 SQL-B 强制（原草稿 §9.4 SQL-B 漏校验）
+    collector_key_id      text NOT NULL,
+    collector_signature   text NOT NULL,
+    payload               bytea NOT NULL,
+    payload_sha256        text NOT NULL,
+    signature             text NOT NULL,
+    signature_key_id      text NOT NULL REFERENCES shutree_sec.evidence_signing_key(key_id),
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    CHECK ((channel IN ('C1','C2','C3','C4','C5','C6')) IS TRUE),
+    UNIQUE (evidence_snapshot_id, channel, op_type),
+    UNIQUE (bound_request_id, bound_attempt_no, bound_lease_epoch, op_type,
+            bound_environment, bound_bucket, bound_canonical_key, payload_sha256)
+);
+-- 权限：REVOKE UPDATE, DELETE, TRUNCATE FROM PUBLIC, shutree_app, shutree_worker;
+--       INSERT 仅 shutree_evidence_collector 经受控函数 sp_evidence_collect().
+
+-- ---------------------------------------------------------------------------
+-- OBJ-04 r2_evidence_verification（append-only 独立复核记录）
+-- ---------------------------------------------------------------------------
+CREATE TABLE shutree_sec.r2_evidence_verification (
+    verification_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evidence_record_id     uuid NOT NULL REFERENCES shutree_sec.r2_evidence_record(evidence_record_id),
+    verifier_id            text NOT NULL,
+    verifier_role          text NOT NULL,
+    verifier_key_id        text NOT NULL,
+    verifier_signature     text NOT NULL,
+    verifier_org_unit      text NOT NULL,
+    verified_at            timestamptz NOT NULL DEFAULT now(),
+    review_method          text NOT NULL,
+    verification_result    text NOT NULL,
+    verified_payload_sha256 text NOT NULL,
+    CHECK ((verification_result IN ('confirmed','contradicted','insufficient')) IS TRUE),
+    UNIQUE (evidence_record_id, verifier_id)
+);
+-- 权限：REVOKE UPDATE, DELETE, TRUNCATE FROM PUBLIC, shutree_app, shutree_worker;
+--       INSERT 仅 shutree_evidence_verifier 经受控函数 sp_evidence_verify().
+-- verifier_id != collector_id 由 TRG-01 跨表校验（不能用行内 CHECK，见 F-01）。
+
+-- ---------------------------------------------------------------------------
+-- OBJ-05 r2_evidence_consumption（唯一可变消费槽位；DB 级互斥锚点）
+-- ---------------------------------------------------------------------------
+CREATE TABLE shutree_sec.r2_evidence_consumption (
+    evidence_snapshot_id       uuid PRIMARY KEY,
+    state                      text NOT NULL DEFAULT 'created',
+    created_at                 timestamptz NOT NULL DEFAULT now(),
+    verified_at                timestamptz,
+    consumed_at                timestamptz,
+    consumed_by_outbox_id      uuid,
+    consumed_by_request_id     text,
+    consumed_by_attempt_no     bigint,
+    consumed_by_lease_epoch    bigint,
+    consumed_by_op_type        text,
+    consumed_by_environment    text,
+    consumed_by_bucket         text,
+    consumed_by_canonical_key  text,
+    consumption_txid           xid8,          -- pg_current_xact_id()
+    consumption_db_role        text,          -- current_user（仅证明 PG 会话角色）
+    rejected_at                timestamptz,
+    reject_reason              text,
+    CHECK ((state IN ('created','verified','consumable','consumed','rejected')) IS TRUE),
+    CHECK (((state = 'consumed') IS NOT TRUE
+            OR (consumed_at IS NOT NULL AND consumed_by_outbox_id IS NOT NULL
+                AND consumption_txid IS NOT NULL AND consumption_db_role IS NOT NULL)) IS TRUE),
+    CHECK (((state <> 'consumed' AND consumed_at IS NOT NULL) IS NOT TRUE)
+);
+-- 权限：shutree_terminality_exec 仅对 (state, consumed_*, consumption_*) 有 UPDATE；
+--       collector 仅 INSERT(created)；其余角色仅 SELECT；全员 REVOKE DELETE/TRUNCATE。
+
+-- ---------------------------------------------------------------------------
+-- OBJ-06 cross_gen_adjudication（既有审计表，追加唯一键作为复合 FK 引用基础）
+-- ---------------------------------------------------------------------------
+ALTER TABLE shutree_sec.cross_gen_adjudication
+    ADD CONSTRAINT uq_cg_audit_quad UNIQUE (adjudication_id, outbox_id, from_gen, to_gen);
+CREATE UNIQUE INDEX uq_cg_one_final_decision
+    ON shutree_sec.cross_gen_adjudication (outbox_id, from_gen, to_gen)
+    WHERE phase IN ('decided','rejected');
+-- 前提：phase NOT NULL（V1.2.27 §6.1 原定义），否则部分唯一索引失效。
+
+-- ---------------------------------------------------------------------------
+-- OBJ-07 cross_gen_decision_slot（既有可变槽位表，追加 FK）
+-- ---------------------------------------------------------------------------
+ALTER TABLE shutree_sec.cross_gen_decision_slot
+    ADD CONSTRAINT fk_cg_reg  FOREIGN KEY (registered_adjudication_id)
+        REFERENCES shutree_sec.cross_gen_adjudication(adjudication_id);
+-- 另两个 FK：final_adjudication_id / dispatched_adjudication_id（同名模式）。
+-- 单列 FK 不保证代次匹配 → 由 TRG-04 跨表校验 (outbox_id,from_gen,to_gen)。
+
+-- ---------------------------------------------------------------------------
+-- OBJ-08 cross_gen_revocation（补齐 V1.2.28 引用但未定义的表）
+-- ---------------------------------------------------------------------------
+CREATE TABLE shutree_sec.cross_gen_revocation (
+    revocation_id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    outbox_id              uuid NOT NULL,
+    from_gen               bigint NOT NULL,
+    to_gen                 bigint NOT NULL,
+    final_adjudication_id  uuid NOT NULL
+        REFERENCES shutree_sec.cross_gen_adjudication(adjudication_id),
+    revoker_id             text NOT NULL,
+    revoker_role           text NOT NULL,
+    reason                 text NOT NULL,
+    evidence_snapshot_id   uuid NOT NULL,
+    created_at             timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (outbox_id, from_gen, to_gen, final_adjudication_id)
+);
+-- 权限：仅 GRANT INSERT/SELECT；REVOKE UPDATE/DELETE/TRUNCATE。
+
+-- ---------------------------------------------------------------------------
+-- OBJ-09 backup_manifests（PG 集群内 manifest，双 LSN + 资产集，随 base backup+WAL 同备同恢复）
+-- ---------------------------------------------------------------------------
+CREATE TABLE shutree_sec.backup_manifests (
+    manifest_id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    backup_label          text NOT NULL,
+    backup_start_lsn      pg_lsn NOT NULL,   -- S = pg_backup_start() 返回；WAL 连续性下界
+    backup_stop_lsn       pg_lsn NOT NULL,   -- E = pg_backup_stop().lsn（官方：ending WAL location）
+    backup_end_time       timestamptz NOT NULL,  -- B = pg_backup_stop 结束时间
+    backup_label_ref      text NOT NULL,     -- 只写备份区，绝不写回活动数据目录
+    tablespace_map_ref    text,
+    timeline              bigint NOT NULL,
+    wal_continuity        boolean NOT NULL,
+    recovery_target_lsn   pg_lsn NOT NULL,   -- T；单一恢复目标 GUC 的取值来源
+    asset_snapshot        jsonb NOT NULL,
+    r2_object_list        jsonb,
+    fence_gen             bigint,
+    seq                   bigint,
+    hmac                  text NOT NULL,
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    CHECK ((backup_start_lsn <= backup_stop_lsn) IS TRUE),
+    CHECK ((backup_stop_lsn <= recovery_target_lsn) IS TRUE),
+    CHECK ((wal_continuity) IS TRUE),
+    CHECK ((backup_label_ref NOT LIKE '%/pg_data/%') IS TRUE)
+);
+-- 【DC-01 修正】backup_end_time 只是 manifest 校验断言（B <= time(T)），
+-- 不是第二个恢复目标 GUC。PG-03 19.5.6：at most one recovery target。
+-- 权限：REVOKE UPDATE, DELETE, TRUNCATE FROM PUBLIC；仅备份作业 INSERT。
+
+-- ===========================================================================
+-- 触发器（9 个；六要素定义见 stage_evidence_registry.json → wp02_triggers）
+-- 全部为设计规格文本，不执行。
+-- ===========================================================================
+-- TRG-01 trg_evidence_verification
+--   AFTER INSERT ON shutree_sec.r2_evidence_verification FOR EACH ROW
+--   跨表 JOIN r2_evidence_record：verifier_id != collector_id ∧ org_unit 相异 ∧
+--   verified_payload_sha256 = payload_sha256 ∧ result='confirmed'；
+--   满足则 UPDATE r2_evidence_consumption SET state='verified' WHERE state='created'
+--   RETURNING ... INTO STRICT；六通道齐备时再推进 state='consumable'（COUNT(DISTINCT channel)=6 检查，对应 §9.4 SQL-E，非 NOT EXISTS）。
+--   失败：RAISE EXCEPTION → 复核记录与槽位状态同生共死回滚。
+--
+-- TRG-02 trg_evidence_consumption_immutable
+--   BEFORE UPDATE OR DELETE ON shutree_sec.r2_evidence_consumption FOR EACH ROW
+--   允许：created→verified→consumable→consumed / created|verified|consumable→rejected。
+--   拒绝：consumed→任意（T-E5）、rejected→任意（T-E6）、任意→revoked（T-E7）、任何 DELETE。
+--   失败：RAISE EXCEPTION 'terminal_state_immutable'。
+--
+-- TRG-03 trg_no_mutation_after_terminal
+--   BEFORE UPDATE OR DELETE ON app.object_outbox / app.promotion_intents FOR EACH ROW
+--   前置：OLD 为真终局（terminal_at IS NOT NULL AND terminal_kind IN 真终局集合）。
+--   拒绝：任何受保护字段变更 / DELETE / UPSERT 的 UPDATE 分支。
+--   失败：RAISE EXCEPTION → 回滚 + outbox_audit 告警（独立事务补写）。
+--
+-- TRG-04 trg_cg_slot_matches_audit
+--   BEFORE INSERT OR UPDATE ON shutree_sec.cross_gen_decision_slot FOR EACH ROW
+--   final_phase 非空时 JOIN 审计表校验 phase/decision/代次逐项一致。
+--   失败：RAISE EXCEPTION 'cg_slot_audit_mismatch'。
+--
+-- TRG-05 trg_cg_audit_requires_slot
+--   BEFORE INSERT ON shutree_sec.cross_gen_adjudication FOR EACH ROW
+--   phase IN ('decided','rejected','dispatched') 时要求同 K 槽位存在且状态相容。
+--   失败：RAISE EXCEPTION 'cg_audit_without_slot'。
+--
+-- TRG-06 trg_cg_revocation_pair
+--   BEFORE INSERT OR UPDATE ON 槽位/撤销表 FOR EACH ROW
+--   revoked_at 非空 ⇔ 存在对应 cross_gen_revocation 行；已派发后禁止撤销。
+--   失败：RAISE EXCEPTION 'cg_revocation_unpaired'。
+--
+-- TRG-07 trg_freeze_request_identity
+--   BEFORE UPDATE ON app.object_outbox FOR EACH ROW
+--   身份列 (request_id,attempt_no,lease_epoch,op_type,environment,bucket,canonical_key) 冻结。
+--   失败：RAISE EXCEPTION 'request_identity_frozen' + admin_action_log。
+--
+-- TRG-08 trg_no_early_unresolve
+--   BEFORE UPDATE ON app.object_outbox FOR EACH ROW
+--   NEW.unresolved_request IS FALSE 时要求同语句写 terminal_proven ∧ accepted_snapshot_id
+--   指向已 consumed 槽位 ∧ terminal_proof 非空；否则拒绝。
+--   失败：RAISE EXCEPTION 'early_unresolve' → 屏障保持 ABORT。
+--
+-- TRG-09 trg_requires_terminal_proven_origin
+--   BEFORE INSERT ON app.object_outbox FOR EACH ROW
+--   origin_outbox_id 非空时要求旧行 terminal_proven ∧ terminalProvenState() IS TRUE。
+--   失败：RAISE EXCEPTION 'origin_not_terminal_proven'。当前运行时不可达。
+
+-- ===========================================================================
+-- 受控函数（6 个；签名/DEFINER/search_path/零调用方布尔参数）
+-- 见 stage_evidence_registry.json → wp02_functions（FN-01..FN-06）。
+-- 统一模式（C-1，采纳 V1.2.19 §10.1-10.3）：
+--   SECURITY DEFINER
+--   SET search_path = pg_catalog, pg_temp
+--   函数体全部 schema 限定（app.*, shutree_sec.*）
+--   OWNER TO shutree_fn_owner
+--     (NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOLOGIN)
+--   REVOKE EXECUTE ... FROM PUBLIC; GRANT EXECUTE ... TO <专用角色>;
+--   REVOKE CREATE ON SCHEMA shutree_sec FROM PUBLIC, shutree_app;
+-- ===========================================================================
+
+-- ===========================================================================
+-- T-TERMINALIZE 事务骨架（设计级伪代码；完整版见 V1.2.30 §7.4 L538-656）
+-- 以下仅为顺序提示，不是可执行 PL/pgSQL。
+--
+-- 【统一锁顺序 LO-0 ~ LO-4】所有 T-TERMINALIZE / T-CROSSGEN DECIDE / settleErrorEvent
+-- 写路径必须严格按此顺序取锁，禁止逆序，禁止跳级；任何一级取锁失败或条件不满足
+-- 立即 ROLLBACK 到 F1~F7 对应失败出口，不得降级为「只读放行」。
+--   LO-0: pg_advisory_xact_lock(hashtextextended('shutree:evidence:' || sid, 0))
+--         —— 同一 sid 跨会话串行化，先于任何行锁，杜绝两个旧请求并发消费同一证据。
+--   LO-1: SELECT ... FROM r2_evidence_consumption WHERE sid=:sid FOR UPDATE
+--         —— 共享消费槽位行，DB 级互斥；锁住各自 outbox 行不能保护此共享证据。
+--   LO-2: SELECT ... FROM object_outbox WHERE outbox_id=:old_id FOR UPDATE
+--         —— 旧请求主行，与 W2 的目标行一致。
+--   LO-3: 只读校验层：r2_evidence_record / r2_evidence_verification /
+--         evidence_signing_key、密钥状态与 org_unit 独立性（仅 SELECT，不加行锁，
+--         不参与写入；用于 G2/G3 的 Authentic() 与绑定逐项比对）。
+--   LO-4: 审计 append-only INSERT：adjudication_log 唯一写入点，永远最后执行，
+--         且只 INSERT 不 UPDATE/DELETE；与 W1/W2 处于同一事务，随 COMMIT 生效。
+--
+--   G1: 前置状态（不读本事务将写的值，消除循环条件）
+--   G2/G3: terminalEvidenceAuthentic(sid,ob) IS TRUE  —— 依赖 LO-3 只读证据
+--   G4: terminalEvidenceConsumable(sid,ob) IS TRUE    —— 依赖 LO-1 槽位状态
+--   W1: UPDATE r2_evidence_consumption SET state='consumed', consumed_* ...
+--       WHERE state='consumable' AND consumed_at IS NULL AND consumed_by_outbox_id IS NULL
+--         AND consumption_txid IS NULL
+--       RETURNING ... INTO STRICT; GET DIAGNOSTICS ROW_COUNT; IF <> 1 THEN ROLLBACK
+--       —— CAS 影响 0 行或多行均 ROLLBACK，不得继续 W2/W3。
+--   W2: UPDATE object_outbox SET request_terminality='terminal_proven',
+--       terminal_proof=<引用与绑定摘要>, accepted_snapshot_id=:sid,
+--       db_writer_role=current_user, unresolved_request=false   -- 同一 UPDATE 语句
+--       WHERE ... RETURNING ... INTO STRICT; IF <> 1 THEN ROLLBACK
+--   W3: INSERT INTO adjudication_log(...) VALUES (...,'terminality_proven')  -- LO-4
+--   COMMIT  -- 唯一提交点；W1+W2+W3 同生共死
+--   失败出口 F1~F7：任一 G 失败 / CAS <> 1 / 锁顺序冲突(死锁) / 连接中断 /
+--                    W2 或 W3 失败 → 整个事务 ROLLBACK，禁止半完成状态。
+-- ===========================================================================
+
+-- ===========================================================================
+-- 结束。此文件从未被任何数据库执行。
+-- ===========================================================================

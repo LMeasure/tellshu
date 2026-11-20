@@ -1,0 +1,18 @@
+  [diag] 崩溃前 holder=8ed95507-7a56-4ad6-8cee-99d3a3babf82 epoch=0 held=1793881333394 now=1793881334592
+PASS R8a 崩溃前已产生 5 条 settled 逐字母事件与 5 条凭证 — events=5 settled=5 credentials=5
+  [diag] 崩溃瞬间原始: holder=8ed95507-7a56-4ad6-8cee-99d3a3babf82 epoch=0 held=1793881333394 events=5 now=1793881695306
+  [evidence] 崩溃前原始锁 holder=8ed95507-7a56-4ad6-8cee-99d3a3babf82 epoch=0 held=1793881333394
+  [evidence] 恢复后 holder=871d19d0-48d4-4029-a31c-dcbd5689bd91 epoch=1 新标签id=871d19d0-48d4-4029-a31c-dcbd5689bd91 输入禁用=false
+PASS R8b 崩溃恢复后锁归属当前标签、epoch 自洽（0=同标签复用 / 1=租约过期接管） — holder=871d19d0-48d4-4029-a31c-dcbd5689bd91 tab=871d19d0-48d4-4029-a31c-dcbd5689bd91 epoch=1 conflictPanel=false
+PASS R8b2 延迟恢复路径：租约过期自动接管（epoch+1）且输入启用 — epoch=1
+PASS R8c 崩溃后恢复：事件与凭证不丢、无 pending、输入恢复 — events=5 pending=0 credentials=5
+PASS R9a 可获取浏览器进程 pid 以执行强制终止 — pid=78080
+PASS R9b SIGKILL 后可用同一 userDataDir 重新启动浏览器
+PASS R9c 进程 kill 后重启：事件/凭证完整、无 pending、恢复链可用 — events 10→10 pending=0 sessions=1
+PASS R11 移动视口触摸模拟：无横向溢出、输入框可交互、触摸事件可用 — scrollW=390 clientW=390 hasTouch=true
+
+────────────────────────────────────────────────────────────
+补充真机回归：8 通过 / 0 失败（8 项）
+N/A  IDB 事务逐拍 in-flight 中断时序（浏览器无法精确注入；自动化层已用 fake-indexeddb 事务 abort 覆盖）
+N/A  真实移动设备与软键盘（无 adb、无真机；R11 仅为视口/触摸模拟）
+N/A  跨内核矩阵 N/A：本机仅安装 Edge（Chromium 内核），无独立 Chrome / Firefox

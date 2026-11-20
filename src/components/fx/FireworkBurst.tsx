@@ -2,21 +2,34 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { CSSProperties } from 'react'
 
 /**
- * 完成庆祝：烟花绽放小动画（学习页完成弹窗专用，见 2026-10-06 学习页改动）。
+ * 完成庆祝：烟花绽放小动画（2026-10-06 学习页改动；10-21 加密密度 + 扩配色）。
+ * 学习页点「完成」→ 回主页时由 Home 挂载播放（不放学习页，否则导航即卸载）。
  *
  * - 纯 CSS 实现（keyframes 在 index.css 的 fw-* 段），不引第三方库。
  * - 父级用条件渲染控制挂载/卸载：挂载即放，放完自动回调 onDone。
- * - 时间线：第 i 朵 delay = i × STAGGER；亮点上升 RISE_MS 后在原位绽放，
- *   粒子从中心炸开淡出。整体约 3.4s，onDone 在最后粒子消散后触发。
+ * - 时间线：第 i 朵 delay = i × STAGGER；亮点上升 RISE_S 后在原位绽放，
+ *   粒子从中心炸开淡出。整体约 3.6s，onDone 在最后粒子消散后触发。
  * - prefers-reduced-motion: reduce 时 CSS 直接隐藏舞台（index.css 兜底）。
  */
 
-/** 烟花颜色：主题绿 + EasyMad 黄绿 + 暖橙 + 白，全部取自 App 视觉样板 */
-const PALETTE = ['#45b649', '#dce35b', '#f59e0b', '#ffffff', '#22c55e'] as const
+/**
+ * 烟花颜色（加权随机，绿/黄绿系为主、暖色点缀、白与淡粉少量）：
+ * 主题绿与 EasyMad 黄绿是产品色，金/橙/翠绿承接庆祝感，
+ * 淡粉一点春意；白色粒子带淡绿外阴影保证浅底可见。
+ */
+const PALETTE: Array<{ c: string; w: number }> = [
+  { c: '#45b649', w: 3 }, // 主题绿
+  { c: '#dce35b', w: 3 }, // EasyMad 黄绿
+  { c: '#f59e0b', w: 2 }, // 暖橙
+  { c: '#fbbf24', w: 2 }, // 金黄
+  { c: '#22c55e', w: 2 }, // 翠绿
+  { c: '#ffffff', w: 2 }, // 白
+  { c: '#f472b6', w: 1 }, // 淡粉（点缀）
+]
 
 /** 烟花朵数与节奏（s） */
-const BURST_COUNT = 6
-const STAGGER_S = 0.32
+const BURST_COUNT = 11
+const STAGGER_S = 0.16
 /** 亮点上升时长（s） */
 const RISE_S = 0.62
 /** 粒子飞散时长（s） */
@@ -46,15 +59,26 @@ function rand(min: number, max: number) {
   return min + Math.random() * (max - min)
 }
 
+/** 按权重取一个颜色 */
+function pickColor() {
+  const total = PALETTE.reduce((s, p) => s + p.w, 0)
+  let r = Math.random() * total
+  for (const p of PALETTE) {
+    r -= p.w
+    if (r <= 0) return p.c
+  }
+  return PALETTE[0].c
+}
+
 function makeBursts(): Burst[] {
   return Array.from({ length: BURST_COUNT }, (_, i) => {
-    const count = Math.round(rand(20, 26))
-    const baseDist = rand(58, 104)
+    const count = Math.round(rand(26, 34))
+    const baseDist = rand(52, 118)
     return {
-      x: rand(10, 90),
-      rise: rand(-56, -38),
+      x: rand(6, 94),
+      rise: rand(-62, -30),
       delay: i * STAGGER_S,
-      color: PALETTE[i % PALETTE.length],
+      color: pickColor(),
       dist: baseDist,
       particles: Array.from({ length: count }, (_, p) => ({
         angle: (360 / count) * p + rand(-9, 9),

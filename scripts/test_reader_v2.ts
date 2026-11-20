@@ -197,15 +197,28 @@ async function main() {
   eq(pickSlotKey(''), null, '空值视为未命中')
   eq(pickSlotKey(null), null, 'null 视为未命中')
 
-  console.log('[需求3] 选择阶段不再挂 onClick（否则 mousedown + click 会互相抵消）')
+  console.log('[需求3] 选择阶段保留「受保护的 onClick 兜底」')
   const idSrc = readFileSync(
     new URL('../src/components/learning/InlineDictation.tsx', import.meta.url),
     'utf8',
   )
   const selStart = idSrc.indexOf('if (selectable && selecting)')
-  const selBlock = idSrc.slice(selStart, selStart + 700)
+  const selBlock = idSrc.slice(selStart, selStart + 900)
   assert(selBlock.includes('data-slot={k}'), '可选词带 data-slot（滑动命中靠它）')
-  assert(!selBlock.includes('onClick'), '选择阶段不挂 onClick（避免与 mousedown 双切）')
+  // 早期设计纯靠手势处理器选词，为避免 mousedown+click 双切，选择阶段不挂 onClick。
+  // 但真机个别内核手势链路不触发，导致「点按/再点取消」失效（见用户反馈），
+  // 故改为「保留 onClick 兜底 + 同键 600ms 去重」：touchend 后内核补发的合成
+  // mousedown/click 与手势共用 toggleGuarded 守卫，同键 600ms 内只切一次，
+  // 既不双切（修「单点选不中」）也补全了点击路径。
+  assert(selBlock.includes('onClick'), '选择阶段保留 onClick 兜底（个别内核手势不生效时靠 click 选词）')
+  assert(
+    selBlock.includes('toggleGuarded'),
+    'onClick 兜底走 toggleGuarded 同键去重（防止合成 mousedown/click 双切）',
+  )
+  assert(
+    idSrc.includes('lastToggleAtRef'),
+    '组件用 lastToggleAtRef 记录最近切换的 { 词, 时刻 } 供去重',
+  )
   assert(idSrc.includes("addEventListener('touchmove'"), '注册了 touchmove（滑动选词）')
   assert(idSrc.includes('passive: false'), 'touchmove 用 passive:false（横向选词要吃掉滚动）')
 

@@ -1,0 +1,103 @@
+▶ 存储可靠性 / 跨标签锁 / 错词事件 / U16 恢复链
+
+▶ 1 · 存储原语（幂等插入 / 并发 CAS / abort / skip / 双驱动）
+  ✓ insertIfAbsent 首次写入返回 true
+  ✓ insertIfAbsent 主键冲突返回 false（不覆盖、不增行）
+  ✓ 事件表仍只有 1 行（期望 1，实际 1）
+  ✓ memory 驱动 insertIfAbsent 首次 true
+  ✓ memory 驱动 insertIfAbsent 重复 false（双驱动一致）
+  ✓ 两个并发 CAS 串行化，结果 = 2（不是 last-writer-wins）（期望 2，实际 2）
+  ✓ memory 驱动并发 CAS 同样收敛到 2（期望 2，实际 2）
+  ✓ abort 抛 AtomicAbortError
+  ✓ abort 事务回滚，一行未写（期望 2，实际 2）
+  ✓ skip 返回 committed=false（期望 false，实际 false）
+  ✓ skip 不写回（期望 2，实际 2）
+
+▶ 2 · L2 跨标签单写者锁（C33-C38）
+  ✓ A 取锁成功，初始 lock_epoch=0（期望 0，实际 0）
+  ✓ 会话记录持锁标签 A（期望 tab-A，实际 tab-A）
+  ✓ B 在租约未过期时取锁被拒（实际 TAB_LOCK_LOST）
+  ✓ B 显式接管，fencing token epoch 恰 +1（期望 1，实际 1）
+  ✓ 接管后持锁标签为 B（期望 tab-B，实际 tab-B）
+  ✓ epoch 原子递增并落库（期望 1，实际 1）
+  ✓ 未获用户确认不得接管（实际 TAKEOVER_NOT_CONFIRMED）
+  ✓ 旧持有者 A 的写前校验被拒（实际 TAB_LOCK_LOST）
+  ✓ A 的 release 不写回（期望 false，实际 false）
+  ✓ 旧标签没能清掉新锁（期望 tab-B，实际 tab-B）
+  ✓ release 未扰动 epoch（期望 1，实际 1）
+  ✓ 旧持有者的事件写入被拒（九路径之一）（实际 TAB_LOCK_LOST）
+  ✓ 拒绝写入后事件表零新增（期望 0，实际 0）
+  ✓ B 心跳续期写入 lock_held_at（期望 1700000003000，实际 1700000003000）
+  ✓ 租约过期允许强制接管
+  ✓ 强制接管同样 epoch+1（期望 6，实际 6）
+  ✓ 强制接管后锁归属 B（期望 tab-B，实际 tab-B）
+  ✓ 时钟回拨不判过期、不误接管（实际 TAB_LOCK_LOST）
+  ✓ 失锁标签心跳被拒（实际 TAB_LOCK_LOST）
+  ✓ 心跳失锁后本地进入只读降级
+  ✓ 降级态下所有写入请求被拒（不静默失败）（实际 LOCK_UNAVAILABLE）
+
+▶ 3 · 错词事件链（T-A/T-B/T-C、S1/S2、stale、C57/C58）
+  ✓ T-A 事件首次落盘
+  ✓ 事件行冻结写入时的 tab_id（期望 tab-A，实际 tab-A）
+  ✓ 事件行冻结写入时的 lock_epoch（期望 0，实际 0）
+  ✓ T-A 重放幂等，不增行
+  ✓ 事件表仍只有 1 行（期望 1，实际 1）
+  ✓ S1 drain 扫到 1 条 pending（期望 1，实际 1）
+  ✓ S1 drain 重放 T-B 恰一次（期望 1，实际 1）
+  ✓ S1 凭证已写入会话
+  ✓ S1 T-C 状态标记完成（期望 settled，实际 settled）
+  ✓ 重复 drain 无 pending，不重复重放（期望 0，实际 0）
+  ✓ 直接重复 settle 返回 already_settled（期望 already_settled，实际 already_settled）
+  ✓ 幂等结算不重复写凭证（期望 1，实际 1）
+  ✓ S2 查凭证跳过 T-B（期望 1，实际 1）
+  ✓ S2 不重复归零/重复结算（期望 0，实际 0）
+  ✓ S2 补 T-C 状态标记（期望 settled，实际 settled）
+  ✓ S2 凭证数不变（期望 1，实际 1）
+  ✓ stale 事件判 settled_skipped（期望 1，实际 1）
+  ✓ stale 事件状态已终结（期望 settled_skipped，实际 settled_skipped）
+  ✓ stale 原因码为 stale_epoch（期望 stale_epoch，实际 stale_epoch）
+  ✓ stale 也写凭证，杜绝永久 pending
+  ✓ stale 事件不再无限重放（期望 0，实际 0）
+
+▶ 4 · U16 升级中断恢复（C60/C62/S5）
+  ✓ versionchange 后内存态全部失效
+  ✓ 重新 open ≠ 已持锁：未走恢复链前写入被拒（实际 LOCK_UNAVAILABLE）
+  ✓ S5 降级态下 drain 不抢锁、页面保持只读（期望 1，实际 1）
+  ✓ 事件保留 pending，不丢不假报成功（期望 pending，实际 pending）
+  ✓ 恢复链重新读取 lock_epoch，未沿用内存旧值（期望 7，实际 7）
+  ✓ 恢复链完成后解除只读降级
+  ✓ 恢复链 drain 补结算成功（期望 1，实际 1）
+  ✓ 注入「跳过 acquireLock」应被测试判定为失败（实际 TAB_LOCK_LOST）
+  ✓ 被拒结算的事件保持 pending（期望 pending，实际 pending）
+
+▶ 5 · V1 生产写路径真实接入（不是只在测试里存在）
+  ✓ 错误提交判定为 wrong（期望 wrong，实际 wrong）
+  ✓ 生产写路径落 1 条错词事件（期望 1，实际 1）
+  ✓ T-C 状态标记完成（期望 settled，实际 settled）
+  ✓ 事件行带当前标签 id（期望 22795254-e117-49a8-9ec0-24b765974db9，实际 22795254-e117-49a8-9ec0-24b765974db9）
+  ✓ 事件行冻结当前代次（期望 0，实际 0）
+  ✓ T-B 凭证与 V1 状态在同一次会话写入内落库
+  ✓ 同 request_id 重放不产生第二行（期望 1，实际 1）
+  ✓ 重放不重复结算（期望 1，实际 1）
+  ✓ 正确提交不写错词事件（期望 1，实际 1）
+  ✓ 正常路径无遗留 pending 事件（期望 0，实际 0）
+
+▶ 6 · v14 行内字段不改 schema
+  ✓ 新增行内字段可回读（无版本升级）（期望 any-tab，实际 any-tab）
+  ✓ lock_epoch 行内字段可回读（期望 9，实际 9）
+  ✓ 原因码可回读（期望 stale_epoch，实际 stale_epoch）
+  ✓ status 索引仍可用（期望 1，实际 1）
+  ✓ session_id 索引仍可用（期望 1，实际 1）
+
+▶ 7 · U11/U1 跨表竞态（C09/T29 窗口：接管插在写前校验与落盘之间）
+  ❌ C09/T29：接管插在写前校验与落盘之间时，旧标签零事件落盘（U1 消除）
+  ✓ 接管方持锁（期望 tab-rival，实际 tab-rival）
+  ✓ fencing token 恰 +1（期望 1，实际 1）
+  ✓ 旧标签未写入结算凭证（事件与凭证必须同事务）
+  ✓ 旧标签提交被明确拒绝（不静默丢弃、不假报成功）
+  ❌ 存储层提供跨表原子批事务 atomicBatch
+
+────────────────────────────────────────────────────────────
+❌ 可靠性回归失败：2 项失败 / 81 项通过
+   - C09/T29：接管插在写前校验与落盘之间时，旧标签零事件落盘（U1 消除）
+   - 存储层提供跨表原子批事务 atomicBatch

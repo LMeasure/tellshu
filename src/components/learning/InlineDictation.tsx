@@ -36,6 +36,10 @@ interface Props {
   onToggleSlot?: (key: SlotKey) => void
   /** 文档语言：决定英文空格分词还是中文词级分词 */
   lang?: LangKind | 'auto'
+  /** 睁眼：默写阶段临时显示被隐藏的单词（答案），闭眼恢复输入框 */
+  reveal?: boolean
+  /** 焦点进入某个默写输入框时回调（用于自动恢复计时器） */
+  onInputFocus?: () => void
 }
 
 export function InlineDictation({
@@ -47,6 +51,8 @@ export function InlineDictation({
   selecting = false,
   onToggleSlot,
   lang = 'auto',
+  reveal = false,
+  onInputFocus,
 }: Props) {
   const inputRefs = useRef(new Map<SlotKey, HTMLInputElement>())
 
@@ -85,7 +91,20 @@ export function InlineDictation({
   const rootRef = useRef<HTMLDivElement>(null)
   const dragToggleRef = useRef(stableToggle)
   dragToggleRef.current = stableToggle
+  // 最近一次切换 { 词, 时刻 }：手势 toggle 与 onClick 兜底共用它做**同键**去重。
+  // 关键：touchend 后移动端内核会补发合成 mousedown + click（compat 事件），
+  // 两者都会再走一次切换——不去重就会「选中又立刻取消」，表现即单点选不中。
+  const lastToggleAtRef = useRef<{ key: string; at: number }>({ key: '', at: 0 })
   const dragActive = selectable && selecting
+
+  /** 同一个词 600ms 内只切一次；不同词不受影响（快速连滑照常逐词切换） */
+  const toggleGuarded = useCallback((key: string | null) => {
+    if (!key) return
+    const last = lastToggleAtRef.current
+    if (last.key === key && Date.now() - last.at < 600) return
+    dragToggleRef.current(key)
+    lastToggleAtRef.current = { key, at: Date.now() }
+  }, [])
 
   useEffect(() => {
     const root = rootRef.current
@@ -100,7 +119,8 @@ export function InlineDictation({
 
     const toggle = (key: string | null) => {
       if (!key) return
-      if (markVisited(visited, key)) dragToggleRef.current(key)
+      // markVisited：一次拖拽内同词只切一次；toggleGuarded：跨事件类型（合成 mousedown/click）同键去重
+      if (markVisited(visited, key)) toggleGuarded(key)
     }
 
     /**
@@ -207,10 +227,14 @@ export function InlineDictation({
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [dragActive])
+  }, [dragActive, toggleGuarded])
 
   return (
-    <div ref={rootRef} className={cn('space-y-4 text-[17px] leading-9', dragActive && 'select-none')}>
+    <div
+      ref={rootRef}
+      className={cn('space-y-4 text-[17px] leading-9', dragActive && 'select-none')}
+      onFocusCapture={() => onInputFocus?.()}
+    >
       {paragraphs.map((p, pi) => (
         <p key={pi} className="whitespace-pre-wrap break-words">
           {tokenize(p, lang).map((tk, ti) => {
@@ -218,8 +242,10 @@ export function InlineDictation({
             const isHidden = hidden.has(k)
 
             // 选择阶段：全部词可选，已选的词高亮。
-            // 这里**不再挂 onClick** —— 选中交给上面的滑动/按下处理器，
-            // 否则 mousedown 切一次、click 再切一次，等于什么都没选。
+            // 选中主要靠上面的滑动/按下处理器；同时保留一个「受保护的 onClick 兜底」——
+            // 个别内核手势链路不触发时靠 click 选词（否则「点按/再点取消」会失效）。
+            // 兜底与手势共用 toggleGuarded 的同键 600ms 去重：touchend 后内核补发的
+            // 合成 mousedown/click 不会把刚选中的词再切回去（二者互斥，不双切）。
             if (selectable && selecting) {
               if (!tk.word) return <span key={k}>{tk.t}</span>
               return (
@@ -227,6 +253,7 @@ export function InlineDictation({
                   key={k}
                   type="button"
                   data-slot={k}
+                  onClick={() => toggleGuarded(k)}
                   className={cn(
                     'rounded px-0.5 transition-colors',
                     isHidden
@@ -240,6 +267,19 @@ export function InlineDictation({
             }
 
             if (!isHidden) return <span key={k}>{tk.t}</span>
+
+            // 睁眼（reveal）：临时显示被隐藏的单词，样式对齐核验视图的「未填」态；
+            // 闭眼恢复输入框，已输入内容不受影响
+            if (reveal) {
+              return (
+                <span
+                  key={k}
+                  className="rounded px-0.5 text-muted-foreground underline decoration-dotted"
+                >
+                  {tk.t}
+                </span>
+              )
+            }
 
             return (
               <SlotInput

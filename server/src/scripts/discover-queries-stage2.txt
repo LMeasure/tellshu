@@ -1,0 +1,47 @@
+# =============================================================================
+# Stage 2 前置召回实验 · 统一查询集（16 条）
+#
+# 格式：<query>\t<期望命中书名>\t<类别>
+# 类别：
+#   fixed         Stage 1 固定 6 条，原文一字不改，用于跨阶段比较
+#   new           新增定向 Query，锚点已用 content ILIKE 实测核实
+#   new-blocked   新增 Query，但锚点在「chapter_title IS NOT NULL」口径下无效
+#                 → 开启过滤时不计入命中率分母，单独记录并附关闭过滤的对照
+#   probe         front matter / 过滤行为探针，**不计入命中率分母**
+#
+# 命中判定：期望书名是否出现在 Top-K 的书名中（大小写不敏感、子串匹配）。
+# 分母口径以《发现书籍链路-Stage2前置召回实验方案.md》§4.0 为准。
+# =============================================================================
+
+# ---------- Stage 1 固定 6 条（A-1~A-3 / B-1~B-3，原文不动） ----------
+拉斯柯尔尼科夫为了证明自己的理论而杀人，之后饱受良心折磨	Crime and Punishment	fixed
+一个家庭教师被雇去照顾一个孩子，住在阴森的大宅里	Jane Eyre	fixed
+关于爱情与阶级的英文小说	Pride and Prejudice	fixed
+Odysseus returns home and takes revenge on the suitors	The Odyssey	fixed
+two young lovers from feuding families die tragically	Romeo and Juliet	fixed
+a governess hired to teach a girl at a gloomy mansion called Thornfield	Jane Eyre	fixed
+
+# ---------- 新增定向 Query 8 条（N1–N8） ----------
+# N1 锚点 Lowood 66 / Thornfield 108，均唯一落在 Jane Eyre（有章节块内）
+一个孤儿女孩在慈善学校忍饥挨冻，后来到一座大宅里做家庭教师	Jane Eyre	new
+# N2 锚点 Udolpho 69，唯一落在 The Mysteries of Udolpho
+一位孤女被亲戚囚禁在阴森的古堡里，接连遭遇恐怖事件	The Mysteries of Udolpho	new
+# N3 锚点 Sweeney Todd 525 块 —— 实测**全部** chapter_title IS NULL，
+#    开启过滤后该书整体不可检索，故标记 new-blocked，不计入过滤口径分母
+斯威尼·托德在舰队街的理发店里接待客人	The String of Pearls	new-blocked
+# N4 锚点 Raskolnikov 784 / Sonia 346，均唯一落在 Crime and Punishment
+拉斯柯尔尼科夫向索尼娅坦白自己杀了人	Crime and Punishment	new
+# N5 锚点 Cecil 236 / Florence 63（+4 块噪声），主导落在 A Room with a View
+a young Englishwoman travels to Italy and must choose between propriety and her own heart	A Room with a View	new
+# N6 锚点 Ithaca 126，唯一落在 The Odyssey
+a man returns after many years to find his home occupied by those who presume him dead	The Odyssey	new
+# N7 锚点 Pemberley 63，唯一落在 Pride and Prejudice
+Mr Darcy and the grand estate of Pemberley	Pride and Prejudice	new
+# N8 锚点 Verona 12（Romeo and Juliet 11 + Udolpho 1 噪声），允许噪声
+a masked ball in Verona where two young people first meet	Romeo and Juliet	new
+
+# ---------- front matter / 过滤行为探针 2 条（F1 / F2，不计入分母） ----------
+# F1 验收：开启过滤时 Top-K 中不得出现 chapter_title IS NULL 的块
+This eBook is for the use of anyone anywhere at no cost and with almost no restrictions whatsoever	(行为探针·不计入分母)	probe
+# F2 极窄 Query，验收：不得静默返回 0 行（须与精确检索对照判定，见方案 §4.4）
+Gutenberg	(行为探针·不计入分母)	probe

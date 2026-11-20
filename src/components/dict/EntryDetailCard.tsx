@@ -55,7 +55,9 @@ export function EntryDetailCard({ entry }: { entry: DictEntry }) {
                 <li key={`${ex.en}-${i}`} className="text-sm">
                   <p className="text-foreground">{ex.en}</p>
                   {ex.zh !== null && ex.zh !== '' && (
-                    <p className="text-xs text-muted-foreground">{ex.zh}</p>
+                    <p data-testid="example-zh" className="text-xs text-emerald-600 dark:text-emerald-400">
+                      {ex.zh}
+                    </p>
                   )}
                 </li>
               ))}

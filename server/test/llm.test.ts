@@ -3,7 +3,8 @@
 //   1. llm：凭据检查 + 端点归一化 + 流式累加 / [DONE] 与坏行容忍 /
 //      上游错 / 未接入 / 网络不可用 / 双超时 / 外部中断
 //   2. llmStudyNote：请求体解析 + 契约校验（坏项丢弃、缺 pos 回退、去重、
-//      全空判败）+ 生成编排（围栏 JSON / 非 JSON / 请求体与 prompt 断言）
+//      全空判败、中文素材形态）+ 生成编排（围栏 JSON / 非 JSON / 请求体与
+//      prompt 断言 / 中英双译语言自适应分支）
 //   3. 路由（app.listen(0) + fetch 冒烟）：503 未接入 / 400 坏体与超段数 /
 //      SSE delta+done 全链路 / 客户端断开 → 上游 abort（防白烧 token）
 // 运行：cd server && npm test
@@ -18,7 +19,13 @@ import type { ConvertStore } from '../src/db/convertStore';
 import type { OcrPipeline } from '../src/ocr/pipeline';
 import { createApp } from '../src/app';
 import { isAiConfigured, resolveChatEndpoint, streamLLM, LlmError } from '../src/llm';
-import { parseStudyNoteRequest, runStudyNoteGeneration, validateStudyNotePayload } from '../src/llmStudyNote';
+import {
+  buildStudyNoteMessages,
+  isChineseSource,
+  parseStudyNoteRequest,
+  runStudyNoteGeneration,
+  validateStudyNotePayload,
+} from '../src/llmStudyNote';
 import type { AsrTranscript, StudyNotePayload } from '../src/types';
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -161,6 +168,25 @@ const GOOD_NOTE_JSON: StudyNotePayload = {
   bilingual_notes: [{ en: 'Hello there', zh: '你好。' }],
   key_points: ['There 用于引起注意'],
   vocabulary: [{ word: 'bold', pos: 'adjective', gloss: '大胆的' }],
+};
+
+/** 中文素材字幕（决策 2026-10-22：中英双译 + 不生成词汇）。 */
+const ZH_FIXTURE_TRANSCRIPT: AsrTranscript = {
+  language: 'zh',
+  duration: 6,
+  segments: [
+    { start: 0, end: 1.5, text: '你好，欢迎来到述树。' },
+    { start: 1.5, end: 3.25, text: '今天我们来聊学习稿。' },
+    { start: 3.25, end: 6, text: '希望对你有帮助。' },
+  ],
+};
+
+/** 中文素材学习稿：en=英译、zh=中文原句、vocabulary 恒空数组。 */
+const ZH_NOTE_JSON: StudyNotePayload = {
+  summary: '一段中文欢迎词。',
+  bilingual_notes: [{ en: 'Hello, welcome to ShuTree.', zh: '你好，欢迎来到述树。' }],
+  key_points: ['欢迎语的使用场景'],
+  vocabulary: [],
 };
 
 // -----------------------------------------------------------------------------
@@ -412,6 +438,55 @@ test('validateStudyNotePayload: 四要素全空判 null；缺 summary 但有词�
   assert.deepEqual(partial, { summary: '', bilingual_notes: [], key_points: [], vocabulary: [{ word: 'x', pos: 'noun', gloss: '某' }] });
 });
 
+test('validateStudyNotePayload: 中文素材形态（en=英译/zh=原句/词汇空数组）原样通过', () => {
+  assert.deepEqual(validateStudyNotePayload(structuredClone(ZH_NOTE_JSON)), ZH_NOTE_JSON);
+});
+
+// -----------------------------------------------------------------------------
+// 4b. llmStudyNote：语言自适应（决策 2026-10-22 中英双译）
+// -----------------------------------------------------------------------------
+
+test('isChineseSource: zh 系判定（大小写/分隔符宽容），en/und/ja 不命中', () => {
+  assert.equal(isChineseSource('zh'), true);
+  assert.equal(isChineseSource('ZH'), true);
+  assert.equal(isChineseSource('  zh  '), true);
+  assert.equal(isChineseSource('zh-CN'), true);
+  assert.equal(isChineseSource('zh_Hans'), true);
+  assert.equal(isChineseSource('en'), false);
+  assert.equal(isChineseSource('und'), false);
+  assert.equal(isChineseSource('ja'), false);
+  assert.equal(isChineseSource(''), false);
+});
+
+test('buildStudyNoteMessages: 英文素材 → 原英文中心 prompt（行为零变化）', () => {
+  const messages = buildStudyNoteMessages({ transcript: FIXTURE_TRANSCRIPT });
+  const system = messages[0];
+  assert.ok(system !== undefined);
+  assert.equal(system.role, 'system');
+  assert.match(system.content, /英语学习材料编辑/);
+  assert.match(system.content, /选 5-15 个最有学习价值的词或短语/);
+  assert.match(system.content, /bilingual_notes 的 en 必须是字幕里出现过的原句/);
+  const user = messages[1];
+  assert.ok(user !== undefined);
+  assert.match(user.content, /语言：en/);
+});
+
+test('buildStudyNoteMessages: 中文素材 → zh 原句 + en 英译，vocabulary 恒空数组', () => {
+  const messages = buildStudyNoteMessages({ transcript: ZH_FIXTURE_TRANSCRIPT });
+  const system = messages[0];
+  assert.ok(system !== undefined);
+  assert.match(system.content, /中文学习材料编辑/);
+  assert.match(system.content, /字幕中出现过的中文原句/);
+  assert.match(system.content, /该句的英文翻译/);
+  assert.match(system.content, /vocabulary 恒为空数组/);
+  // 英文素材的词汇挑选要求不得残留（否则 LLM 可能仍给中文素材造词汇）
+  assert.doesNotMatch(system.content, /选 5-15 个/);
+  const user = messages[1];
+  assert.ok(user !== undefined);
+  assert.match(user.content, /语言：zh/);
+  assert.match(user.content, /\[00:00–00:01\] 你好，欢迎来到述树。/);
+});
+
 // -----------------------------------------------------------------------------
 // 5. llmStudyNote：生成编排
 // -----------------------------------------------------------------------------
@@ -459,6 +534,24 @@ test('runStudyNoteGeneration: 全文非 JSON → LlmError upstream', async () =>
       return true;
     },
   );
+});
+
+test('runStudyNoteGeneration: 中文字幕 → 实际下发 ZH prompt，词汇空数组 payload 通过', async () => {
+  const { fetchImpl, calls } = recordingStreamFetch(() =>
+    completeResponse([sseLine(openaiDelta(JSON.stringify(ZH_NOTE_JSON))), 'data: [DONE]\n\n']),
+  );
+  const note = await runStudyNoteGeneration({ transcript: ZH_FIXTURE_TRANSCRIPT }, { config: AI_ON, fetchImpl });
+  assert.deepEqual(note, ZH_NOTE_JSON);
+  assert.equal(calls.length, 1);
+  const call = calls[0];
+  assert.ok(call !== undefined);
+  const body = call.body as { messages: Array<{ role: string; content: string }> };
+  const system = body.messages[0];
+  const user = body.messages[1];
+  assert.ok(system !== undefined && user !== undefined);
+  assert.match(system.content, /中文学习材料编辑/);
+  assert.match(system.content, /vocabulary 恒为空数组/);
+  assert.match(user.content, /语言：zh/);
 });
 
 // -----------------------------------------------------------------------------

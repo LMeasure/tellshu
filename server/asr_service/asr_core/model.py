@@ -3,6 +3,8 @@
 迁移自 shutree/语音识别/backend/app/asr/model.py（v0.5.0）。
 适配点：
 - transcribe() 的 vad_filter 由配置控制（Phase1.5 决策点 5：默认关，切配置可开）；
+- auto（产品恒 auto）或 zh 时注入简体中文 initial_prompt（决策 2026-10-22，
+  见 _zh_initial_prompt）；
 - 其余（延迟加载、本地目录优先、GPU 失败回退 CPU、静音预热）原样保留。
 业务代码只依赖本模块暴露的 transcribe()，不接触具体推理库。
 """
@@ -145,6 +147,25 @@ class ASRModel:
         finally:
             fw_logger.setLevel(previous_level)
 
+    def _zh_initial_prompt(self, lang: str | None) -> str | None:
+        """auto（lang=None）或 zh 时返回简体中文偏置 prompt；显式 en 等返回 None。
+
+        决策（2026-10-22 用户确认）：中文音频转写输出简体汉字。手段是
+        faster-whisper 的 initial_prompt——传入的文案会条件化解码器，
+        简体中文文案即可把中文输出倾向简体字（不引入 opencc 等新依赖）。
+        语言检测（mel → language token）先于解码且不吃 prompt，故 auto 下
+        注入不影响检测：2026-10-22 实测英文音频 auto+本文案输出逐字不变。
+        显式 en（产品已无此入口，API 仍收）不注入；用户可用
+        ASR_ZH_SIMPLIFIED_BIAS=false 或将 ASR_ZH_SIMPLIFIED_PROMPT 置空关闭。
+        中文音频的实际简体效果需真实中文素材复测（开发机无中文样本）。
+        """
+        if lang is not None and not lang.lower().startswith("zh"):
+            return None
+        if not self._settings.zh_simplified_bias:
+            return None
+        prompt = self._settings.zh_simplified_prompt.strip()
+        return prompt if prompt else None
+
     def transcribe(self, audio_path: str | Path, language: str | None = None) -> TranscriptionResult:
         """识别音频文件，返回文本 + 时间戳分段。
 
@@ -156,6 +177,7 @@ class ASRModel:
         segments_iter, info = self._model.transcribe(
             str(audio_path),
             language=lang,
+            initial_prompt=self._zh_initial_prompt(lang),
             beam_size=self._settings.beam_size,
             vad_filter=self._settings.vad_filter,
         )

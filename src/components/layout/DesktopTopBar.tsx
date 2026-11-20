@@ -18,7 +18,16 @@ import { cn } from '@/lib/utils'
  * （public/ 仅有 favicon 与 PNG，无独立矢量 logo），此处直接复用该组合，
  * 不重新绘制、不使用临时文字 Logo。
  */
-export function DesktopTopBar({ className }: { className?: string }) {
+export function DesktopTopBar({
+  className,
+  showSearch = true,
+}: {
+  className?: string
+  /** 是否渲染中部搜索（复用 SearchDock topbar 模式）。
+   *  与移动档 SearchDock 的 showGlobalSearch 同源：单词学习等路由传 false 即不显示全局搜索。
+   *  默认 true，不影响其余页面原有搜索功能。 */
+  showSearch?: boolean
+}) {
   const navigate = useNavigate()
   return (
     <header
@@ -39,9 +48,10 @@ export function DesktopTopBar({ className }: { className?: string }) {
         <span className="text-base font-semibold text-foreground">述树</span>
       </Link>
 
-      {/* 桌面搜索：复用 SearchDock 的 topbar 模式（仅外观不同，逻辑共用） */}
+      {/* 桌面搜索：复用 SearchDock 的 topbar 模式（仅外观不同，逻辑共用）。
+          仅当 showSearch 为 true 时渲染；单词学习等路由传 false 即不显示全局搜索。 */}
       <div className="flex min-w-0 flex-1 justify-center">
-        <SearchDock variant="topbar" />
+        {showSearch && <SearchDock variant="topbar" />}
       </div>
 
       {/* 右侧操作区：仅真实可用功能（设置）；无用户菜单 / 通知等，不制造无效按钮 */}

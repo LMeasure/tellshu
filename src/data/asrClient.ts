@@ -28,11 +28,14 @@ const DEFAULT_TIMEOUT_MS = 30_000
 /** 带 HTTP 状态的请求错误：503 = 服务未接入，其他 = 常规失败。 */
 export class ApiRequestError extends Error {
   readonly status: number
+  /** 服务端/代理层错误码（如 service_unavailable / backend_unreachable）；无则 undefined */
+  readonly code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = 'ApiRequestError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -63,7 +66,11 @@ async function requestJson<T>(
         payload !== null && typeof payload === 'object' && 'error' in payload
           ? (payload as { error?: { message?: string; code?: string } }).error
           : undefined
-      throw new ApiRequestError(response.status, body?.message ?? `请求失败（HTTP ${response.status}）`)
+      throw new ApiRequestError(
+        response.status,
+        body?.message ?? `请求失败（HTTP ${response.status}）`,
+        body?.code,
+      )
     }
     if (payload === null) {
       // 200 但 body 不是 JSON —— 典型场景：前端服务器没配 /api 代理时，

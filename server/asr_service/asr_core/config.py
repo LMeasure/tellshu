@@ -34,6 +34,13 @@ DEFAULT_EXTENSIONS = (
 # 端口避开常见占用：8000（语音识别项目 API）/ 5173 / 4174 / 5432
 DEFAULT_PORT = 8177
 
+# 简体偏置文案：language 为 auto（产品恒 auto）或 zh 时注入 faster-whisper
+# initial_prompt，把中文输出倾向简体字（决策 2026-10-22：中文音频转写输出简体）。
+# 实测英文音频在 auto + 本文案下输出逐字不变（检测步骤不吃 prompt）；
+# 中文音频的简体效果需真实中文素材复测。可用 ASR_ZH_SIMPLIFIED_PROMPT 覆盖、
+# ASR_ZH_SIMPLIFIED_BIAS=false 关闭。
+DEFAULT_ZH_SIMPLIFIED_PROMPT = "以下是简体中文的普通话语音转写。"
+
 
 class ConfigError(Exception):
     """配置非法。"""
@@ -87,6 +94,8 @@ class SidecarSettings:
     device: str                    # auto / cpu / cuda
     compute_type: str              # auto / int8 / float16 / ...
     language: str                  # 默认识别语言，auto = 自动检测
+    zh_simplified_bias: bool       # auto/zh 时注入简体中文 initial_prompt（默认开）
+    zh_simplified_prompt: str      # 该 initial_prompt 的文案（空串 = 不注入）
     beam_size: int
     vad_filter: bool               # 是否启用 silero VAD 过滤（决策点 5：默认关）
     preload_model: bool            # 服务启动即加载模型（health 门控依赖）
@@ -121,6 +130,8 @@ def load_settings() -> SidecarSettings:
         device=_env("ASR_DEVICE", "cpu").lower(),
         compute_type=_env("ASR_COMPUTE_TYPE", "int8").lower(),
         language=_env("ASR_LANGUAGE", "auto").lower(),
+        zh_simplified_bias=_env_bool("ASR_ZH_SIMPLIFIED_BIAS", True),
+        zh_simplified_prompt=_env("ASR_ZH_SIMPLIFIED_PROMPT", DEFAULT_ZH_SIMPLIFIED_PROMPT),
         beam_size=_env_int("ASR_BEAM_SIZE", 5),
         vad_filter=_env_bool("ASR_VAD_FILTER", False),
         preload_model=_env_bool("ASR_PRELOAD_MODEL", True),

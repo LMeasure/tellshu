@@ -22,6 +22,7 @@ import type { SVGProps } from 'react'
  *   IconMailSolid  11号 我的页消息入口
  *   IconSeqPlay        连续朗读全部例句（播放列表）
  *   IconImport         导入素材（托盘 + 下箭）
+ *   IconBroom      12号 清空 / 扫除（阅读器记忆栏「清空选择」）
  * 书籍类图标维持 lucide 的 BookOpen（需求：书籍保持原有图标）。
  */
 
@@ -190,6 +191,19 @@ export function IconImport(props: IconProps) {
       <path d="M4.4 14.6v3.6a2 2 0 0 0 2 2h11.2a2 2 0 0 0 2-2v-3.6" />
       <path d="M12 3.8v9.4" />
       <path d="m8.4 9.8 3.6 3.6 3.6-3.6" />
+    </StrokeIcon>
+  )
+}
+
+/** 12号 · 扫把：竖杆 + 梯形刷头 + 刷毛（清空 / 扫除语义） */
+export function IconBroom(props: IconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M12 2.6v6.6" />
+      <path d="M9.1 9.2h5.8l1.5 4.6a3.2 3.2 0 0 1-3.1 4h-2.6a3.2 3.2 0 0 1-3.1-4Z" />
+      <path d="M10.7 17.9v2.3" />
+      <path d="M12 17.9v2.3" />
+      <path d="M13.3 17.9v2.3" />
     </StrokeIcon>
   )
 }

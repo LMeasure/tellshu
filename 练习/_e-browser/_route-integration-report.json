@@ -1,0 +1,163 @@
+{
+  "startedAt": "2026-10-26T18:47:59.295Z",
+  "base": "http://127.0.0.1:4174",
+  "checks": [
+    {
+      "id": "G1.1",
+      "name": "直访 /spelling?mode=recent 渲染出练习页",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G1.2",
+      "name": "直访后落了一份 IN_PROGRESS 会话",
+      "ok": true,
+      "detail": "sessions=1"
+    },
+    {
+      "id": "G1.3",
+      "name": "刷新后恢复同一会话（id 不变）",
+      "ok": true,
+      "detail": "id=c52db5ec-ec33-4c0a-a933-cfb6dac5786c"
+    },
+    {
+      "id": "G1.4",
+      "name": "刷新后 current_position 不回退",
+      "ok": true,
+      "detail": "0 → 0"
+    },
+    {
+      "id": "G1.5",
+      "name": "刷新不重复计数（队列总尝试次数不因重渲染增长）",
+      "ok": true,
+      "detail": "1 → 1"
+    },
+    {
+      "id": "G1.6",
+      "name": "刷新后 URL 仍是可分享的 /spelling?mode=",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/spelling?mode=recent"
+    },
+    {
+      "id": "G2.1",
+      "name": "夹具已清空会话（验证「空 id」场景前）",
+      "ok": true,
+      "detail": "sessions=0"
+    },
+    {
+      "id": "G2.2",
+      "name": "无 id 参数不白屏（给出空态/错误态而非崩溃）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G2.3",
+      "name": "id 不存在时给出明确提示，不编造数字",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G2.4",
+      "name": "直访 /spelling-result?id=<真实 id> 渲染默写结果页",
+      "ok": true,
+      "detail": "默写结果 2026/10/27 02:48:12 开始 · 6 词 0 完成 0 跳过 0 失效 0 提交次数 0 答对"
+    },
+    {
+      "id": "G2.5",
+      "name": "结果页含「逐词明细」（与占位 /result 区分）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G2.6",
+      "name": "结果页数据源是持久化会话（库里可读到同一份队列）",
+      "ok": true,
+      "detail": "queue=6 completed=0"
+    },
+    {
+      "id": "G2.7",
+      "name": "结果页不显示占位的「连续学习」文案",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G3.1",
+      "name": "/review 点「开始默写」跳到 /spelling",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/spelling?mode=recent"
+    },
+    {
+      "id": "G3.2",
+      "name": "跳转 URL 带上选词模式参数",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/spelling?mode=recent"
+    },
+    {
+      "id": "G3.3",
+      "name": "跳转后真的进入练习页（不是空白路由）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G3.4",
+      "name": "入口切换模式后 URL mode 随之变化",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/spelling?mode=random"
+    },
+    {
+      "id": "G4.1",
+      "name": "/spelling 页上仍挂着并行任务的全局搜索入口（SearchDock）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G4.2",
+      "name": "默认不展开全屏搜索层",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G4.3",
+      "name": "点入口可展开并行任务的全屏搜索层",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G4.4",
+      "name": "收起搜索层后回到默写页且输入框仍存在",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G4.5",
+      "name": "收起后搜索层已从 DOM 移除",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "G4.6",
+      "name": "默写输入框未被任何浮层遮挡（命中测试落在自身）",
+      "ok": true,
+      "detail": "{\"top\":\"spelling-input\",\"covered\":false}"
+    },
+    {
+      "id": "G4.7",
+      "name": "/search 页不重复挂全局搜索入口（showGlobalSearch={false} 生效）",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "screenshots": [
+    "练习\\_e-browser\\g1-spelling-refresh.png",
+    "练习\\_e-browser\\g2-result-no-id.png",
+    "练习\\_e-browser\\g2-result-bad-id.png",
+    "练习\\_e-browser\\g2-result-direct.png",
+    "练习\\_e-browser\\g3-review-entry.png",
+    "练习\\_e-browser\\g4-search-overlay-on-spelling.png",
+    "练习\\_e-browser\\g4-search-page.png"
+  ],
+  "edgeVersion": "Edg/156.0.4314.42",
+  "seededVocab": 6,
+  "finishedAt": "2026-10-26T18:48:31.585Z",
+  "failures": 0
+}

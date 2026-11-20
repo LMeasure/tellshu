@@ -363,3 +363,45 @@ GET /api/dictionary/entries?word=abacus     → 完整词条含 senses
   属于 2026-10-07 01:40「界面七项改版」的遗留/进行中编辑，不在本次修复范围，待其完成后再统一构建。
   代理修复**不需要重新构建**（vite 配置重启进程即生效），当前 dist（10-07 22:25 全绿版）照常服务。
 - dictClient 兜底改动已在源码，随下次构建一起生效。
+
+---
+
+## 十、2026-10-21 13:15 · 恢复全链路验证（Reader 改版收尾后）
+
+### 10.1 发生了什么
+上一轮（10-07）遗留的唯一阻塞项——`Reader.tsx` / `ReaderSettingsSheet.tsx` 的 8 个类型错误——
+在 10-12 / 10-20 的「阅读器界面七项改版」后续编辑中已被修掉（文件 mtime 10-20 21:48）。
+本轮接手后完成全量四项验证，并恢复了两周后掉线的服务环境。
+
+### 10.2 四项验证（全绿）
+
+```
+npx tsc --noEmit      ✅ 退出码 0（Reader 错误已消除）
+npm test              ✅ 21 套全过（&& 串联，退出码 0）
+npm run build         ✅ 产物重出（含 10-12/10-20 Reader 最新代码）
+python scripts/check_pwa.py  ✅ 10 项体检通过
+```
+
+### 10.3 环境恢复（手机联调链路）
+
+| 发现 | 处理 |
+|---|---|
+| PostgreSQL 服务 `postgresql-x64-18`（D:/Program Files\PostgreSQL\18）状态 Stopped，health 报 `database:"error"`，全接口 500 | `Start-Service postgresql-x64-18` → Running，5432 通 |
+| preview 4174 进程已死 | 重启 `npm run preview -- --port 4174 --strictPort`（沿用 10-07 的 /api 代理修复） |
+| 后端 8787 | 10-18 启动的进程仍在，未动 |
+
+### 10.4 端到端冒烟（curl 走 4174 代理 = 手机视角，全绿）
+
+```
+GET /api/health                                  → 200 {"status":"ok","database":"ok"}
+GET /api/search?q=aback&limit=3                  → hits×3 精确命中（扫描库）
+GET /api/search?q=算盘&limit=2                    → hits 命中 abacus（中文释义检索）
+GET /api/dictionary/entries?word=abacus          → 完整词条含 senses
+GET /api/sync/dictionary?since=0&limit=1         → 正常 JSON
+GET /api/search?q=abacus&limit=5                 → 双路：扫描库 abacus/exact + 内置词库 abacus(TEM-8 专八)/exact
+SPA 路由 / /search /word/aback /word/abacus /dict-ingest /reader/1 → 全 200
+```
+
+### 10.5 运维备忘（给重启机器后的你）
+按顺序：① `Start-Service postgresql-x64-18`（5432）② `cd server && node dist/src/index.js`（8787）
+③ `npm run preview -- --port 4174 --strictPort`。三者齐了手机才能访问 `http://<本机IP>:4174`。

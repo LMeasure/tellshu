@@ -56,6 +56,14 @@ export interface SpeechService {
   /** 立刻中断当前朗读 */
   cancel(): void
 
+  /**
+   * 播放「错误提示音」（单词默写 V2：任意真实错误字母发生时立即播放）。
+   * 与 speak() 分开：提示音是短促非语音音，不占用朗读队列、不打断听书。
+   * 返回是否真的触发了发声；不支持/被浏览器自动播放策略拦截时返回 false，
+   * 调用方不得据此判定判错失败（提示音是反馈，不是正确性依据）。
+   */
+  playErrorTone(): boolean
+
   /** 实时识别一次跟读，resolve 为最终识别文本；不支持时 reject(new Error('unsupported')) */
   listen(options?: ListenOptions): Promise<string>
 }

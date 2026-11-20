@@ -49,7 +49,7 @@ export function AppShell({
         <div className="flex h-screen overflow-hidden">
           <SideNav />
           <div className="flex min-w-0 flex-1 flex-col">
-            <DesktopTopBar />
+            <DesktopTopBar showSearch={showGlobalSearch} />
             <main className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto w-full max-w-[1200px]">{children}</div>
             </main>

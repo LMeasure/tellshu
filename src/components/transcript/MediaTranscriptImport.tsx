@@ -10,27 +10,35 @@ import { useMediaAudio } from '@/hooks/useMediaAudio'
 import { asrService, isAsrSupported, type PickedMedia } from '@/services/asr'
 import { validateMediaFile } from '@/domain/transcript/validate'
 import { transcribeAndSave } from '@/domain/transcript/transcribe'
-import { toSrt, toTxt, toVtt } from '@/domain/transcript/subtitle'
+import { getLatestTranscriptRecord } from '@/domain/transcript/store'
+import { toCsv, toJson, toSrt, toTxt, toVtt } from '@/domain/transcript/subtitle'
 import type { Transcript } from '@/domain/transcript/types'
 import { ApiRequestError } from '@/data/asrClient'
 import { StudyNotePanel } from '@/components/transcript/StudyNotePanel'
 
 /**
- * 音视频转字幕（Phase 1）
+ * 音视频转字幕（Phase 1 / Phase 2 M1-M2）
  * ------------------------------------------------------------------
  * 状态机：idle -> picked -> submitting -> running -> done；
  * 分支：failed（重试）、not-configured（503 -> 空态引导，不造假字幕）。
+ * 选完文件即自动进入 submitting（决策 2026-10-22 修订：无「开始转写」按钮，
+ * 语言也不让用户选，恒 auto 自动检测）。
  *
- * 范围锁定（用户拍板）：只做「音视频 -> 字幕」。结果区**只读展示**，
- * 不做字幕编辑 / 学习稿 / 思维导图等任何下游能力；
- * Phase 2 M1 起字幕自动落本机 Dexie（刷新不丢，离线可用），
- * 历史字幕列表 / 学习稿入口属 M2 范围，本期不做。
+ * 持久化口径（M1 起，用户拍板）：转写成功即落本机 Dexie `transcripts`
+ * （用户资产起点，永久留存），并自动登记为阅读器资料（幂等键
+ * t_<jobId>，见 transcribeAndSave -> ensureTranscriptReading；
+ * 历史任务由 main.tsx 启动期 reconcile 补齐）。
+ * 本页挂载时回读**最近一次**转写：刷新 / 重新进页面不丢入口，
+ * 导出与学习稿立即可用（媒体文件句柄不持久，刷新后仅播放需重选）。
  */
 
 type Phase = 'idle' | 'picked' | 'submitting' | 'running' | 'done' | 'failed'
 
+/** 导出格式（下载按钮与 MIME 共用的单一来源）。 */
+type ExportKind = 'txt' | 'srt' | 'vtt' | 'csv' | 'json'
+
 const WEAK_HINT =
-  '文件将上传至服务端转录；字幕后自动保存在本机，刷新不丢；字幕只读展示，暂不支持修改。'
+  '选择文件后即自动上传服务端转录（语种自动检测）；字幕后自动保存在本机并进入阅读器，刷新不丢；字幕只读展示，暂不支持修改。'
 
 function formatClock(seconds: number): string {
   const total = Math.max(0, Math.round(seconds))
@@ -72,6 +80,31 @@ export function MediaTranscriptImport() {
     return () => URL.revokeObjectURL(url)
   }, [media])
 
+  // 挂载回读最近一次转写（Dexie 持久化）：刷新 / 重新进页面后
+  // 导出与学习稿入口立即可用，不要求重新上传或重新转写。
+  // 只回读一次（deps 空）：用户主动选新文件/重新转写以内存态为准。
+  useEffect(() => {
+    let cancelled = false
+    void getLatestTranscriptRecord()
+      .then((record) => {
+        if (cancelled || record === undefined) return
+        setTranscript({
+          id: record.id,
+          language: record.language,
+          duration: record.duration,
+          segments: record.segments,
+          fileName: record.fileName,
+        })
+        setPhase('done')
+      })
+      .catch((e) => {
+        if (!cancelled) console.warn('[transcript] 回读最近转写失败：', e)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   async function pick(): Promise<void> {
     setError('')
     setNotConfigured(false)
@@ -84,16 +117,22 @@ export function MediaTranscriptImport() {
       return
     }
     setMedia(file)
-    setTranscript(null)
-    setActiveIndex(-1)
-    setPhase('picked')
+    // 选完文件即自动开始转写（决策 2026-10-22 修订：去掉「开始转写」步骤）。
+    // 文件不合法时上面已拦下并留错误态，不会误上传。
+    await runTranscribe(file)
   }
 
-  async function start(): Promise<void> {
-    if (media === null) return
-    const check = validateMediaFile(media.name, media.sizeBytes)
+  /**
+   * 提交转写并落库（选文件后自动触发；失败重试也走这里）。
+   * 语言恒为 auto（不让用户选语言）：学习稿的中英方向由服务端按检测到的
+   * 字幕语种自适应——en → 英文原句+中文释义；zh → 中文原句+英文释义
+   * （见 server/src/llmStudyNote.ts 双 prompt）。
+   */
+  async function runTranscribe(file: PickedMedia): Promise<void> {
+    const check = validateMediaFile(file.name, file.sizeBytes)
     if (!check.ok) {
       setError(check.reason)
+      setPhase('picked')
       return
     }
     setPhase('submitting')
@@ -103,7 +142,7 @@ export function MediaTranscriptImport() {
     setActiveIndex(-1)
     try {
       const result = await transcribeAndSave(
-        { file: media.blob, fileName: media.name, language: 'auto' },
+        { file: file.blob, fileName: file.name, language: 'auto' },
         {
           onStage: (text, status) => {
             setStage(text)
@@ -116,8 +155,14 @@ export function MediaTranscriptImport() {
       setPhase('done')
     } catch (e) {
       setStage('')
-      if (e instanceof ApiRequestError && e.status === 503) {
-        // 服务未接入：空态引导，绝不显示假字幕
+      // 服务未接入（服务端 503 service_unavailable）：空态引导，绝不显示假字幕。
+      // 代理层 503（code=backend_unreachable，后端没启动）走错误态——
+      // 后端没启动 ≠ 转录服务未接入，不能误导用户。
+      if (
+        e instanceof ApiRequestError &&
+        e.status === 503 &&
+        e.code !== 'backend_unreachable'
+      ) {
         setNotConfigured(true)
         setPhase('idle')
         return
@@ -152,12 +197,37 @@ export function MediaTranscriptImport() {
     void el.play().catch(() => undefined)
   }
 
-  function exportAs(kind: 'txt' | 'srt' | 'vtt'): void {
-    if (transcript === null || media === null) return
-    const base = media.name.replace(/\.[a-z0-9]+$/i, '') || 'media'
-    if (kind === 'txt') downloadTextFile(`${base}-字幕.txt`, toTxt(transcript.segments))
-    else if (kind === 'srt') downloadTextFile(`${base}-字幕.srt`, toSrt(transcript.segments))
-    else downloadTextFile(`${base}-字幕.vtt`, toVtt(transcript.segments))
+  /**
+   * 导出（TXT / SRT / VTT / CSV / JSON）。
+   * 数据源一律取 transcript.segments（Dexie 持久化的完整结果），
+   * **不依赖 media**——刷新后回读的转写同样可导出；
+   * 文件名取原始文件名（回读态同样带 fileName），缺失时用通用名。
+   * 下载失败抛错 -> 错误态明示，绝不静默无响应。
+   */
+  function exportAs(kind: ExportKind): void {
+    if (transcript === null) return
+    const raw = transcript.fileName ?? ''
+    const base = raw.replace(/\.[a-z0-9]+$/i, '') || '字幕素材'
+    try {
+      if (kind === 'txt') downloadTextFile(`${base}-字幕.txt`, toTxt(transcript.segments), 'txt')
+      else if (kind === 'srt') downloadTextFile(`${base}-字幕.srt`, toSrt(transcript.segments), 'srt')
+      else if (kind === 'vtt') downloadTextFile(`${base}-字幕.vtt`, toVtt(transcript.segments), 'vtt')
+      else if (kind === 'csv') downloadTextFile(`${base}-字幕.csv`, toCsv(transcript.segments), 'csv')
+      else
+        downloadTextFile(
+          `${base}-字幕.json`,
+          toJson({
+            id: transcript.id,
+            language: transcript.language,
+            duration: transcript.duration,
+            fileName: transcript.fileName,
+            segments: transcript.segments,
+          }),
+          'json',
+        )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '导出失败，请重试')
+    }
   }
 
   return (
@@ -170,7 +240,7 @@ export function MediaTranscriptImport() {
             onClick={() => void pick()}
             disabled={!pickerOk || busy}
             aria-label="选择音视频文件"
-            title="选择本机音频或视频文件（单选）"
+            title="选择本机音频或视频文件（单选，选完自动开始转写）"
           >
             <FileAudio className="h-4 w-4" /> 选择音视频文件
           </Button>
@@ -199,17 +269,6 @@ export function MediaTranscriptImport() {
             </div>
           )}
 
-          <Button
-            className="w-full"
-            onClick={() => void start()}
-            disabled={media === null || busy}
-            aria-label="开始转写"
-            title="上传到服务端并开始转写（未接入时会如实提示）"
-          >
-            <Captions className="h-4 w-4" />
-            {busy ? stage || '处理中…' : '开始转写'}
-          </Button>
-
           {stage !== '' && busy && <p className="text-xs text-muted-foreground">{stage}</p>}
           {error !== '' && (
             <div className="flex items-center gap-1 text-xs text-destructive">
@@ -233,14 +292,19 @@ export function MediaTranscriptImport() {
           message={error || '转写失败'}
           onRetry={() => {
             setError('')
-            setPhase(media === null ? 'idle' : 'picked')
+            // 自动转写链路：重试即用已选文件再次提交（media 丢失则回 idle 重新选）
+            if (media === null) {
+              setPhase('idle')
+              return
+            }
+            void runTranscribe(media)
           }}
         />
       ) : transcript === null ? (
         <EmptyState
           icon={Captions}
           title="还没有字幕"
-          description="选择一个音频或视频文件并开始转写，时间轴字幕会出现在这里，可导出 TXT / SRT / VTT。"
+          description="选择一个音频或视频文件并开始转写，时间轴字幕会出现在这里，可导出 TXT / SRT / VTT / CSV / JSON。"
         />
       ) : (
         <Card>
@@ -268,6 +332,13 @@ export function MediaTranscriptImport() {
                   className="w-full"
                 />
               )
+            )}
+
+            {media === null && (
+              <p className="rounded-lg bg-secondary/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                已从本机存储恢复最近一次转写（自动保存在阅读器「我的素材」中）。
+                媒体文件句柄不随刷新保留，如需播放请重新选择同一文件；导出与学习稿不受影响。
+              </p>
             )}
 
             <div className="text-xs text-muted-foreground">
@@ -303,7 +374,7 @@ export function MediaTranscriptImport() {
                 size="sm"
                 onClick={() => exportAs('txt')}
                 aria-label="导出 TXT"
-                title="导出纯文本（每段一行）"
+                title="导出纯文本（每段一行，无时间戳）"
               >
                 <Download className="h-4 w-4" /> TXT
               </Button>
@@ -324,6 +395,24 @@ export function MediaTranscriptImport() {
                 title="导出 WebVTT 字幕"
               >
                 <Download className="h-4 w-4" /> VTT
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportAs('csv')}
+                aria-label="导出 CSV"
+                title="导出 CSV 表格（index,start_time,end_time,text）"
+              >
+                <Download className="h-4 w-4" /> CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportAs('json')}
+                aria-label="导出 JSON"
+                title="导出 JSON（完整结构化数据，含每段时间戳）"
+              >
+                <Download className="h-4 w-4" /> JSON
               </Button>
             </div>
           </CardBody>

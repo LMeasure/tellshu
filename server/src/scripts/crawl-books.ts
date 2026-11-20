@@ -169,6 +169,11 @@ interface CliOptions {
   readonly force: boolean;
   /** 只对已落盘的 raw JSON 重跑章节解析，不发起任何网络请求（便于离线迭代解析规则） */
   readonly reparse: boolean;
+  /**
+   * 只处理这些 Gutenberg ID（逗号分隔，榜单内过滤）。
+   * 为 null 时按榜单顺序取前 limit 本——这是 Stage 1 起就有的原有行为，未改动。
+   */
+  readonly ids: readonly string[] | null;
 }
 
 interface RequestLogEntry {
@@ -1405,16 +1410,26 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let concurrency = DEFAULT_CONCURRENCY;
   let force = false;
   let reparse = false;
+  let ids: string[] | null = null;
+  let limitSet = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dry-run') dryRun = true;
     else if (arg === '--force') force = true;
     else if (arg === '--reparse') reparse = true;
+    else if (arg === '--ids') {
+      const raw = argv[i + 1];
+      ids = raw === undefined ? [] : raw.split(',').map((s) => s.trim()).filter(Boolean);
+      i += 1;
+    }
     else if (arg === '--limit') {
       const raw = argv[i + 1];
       const value = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
-      if (Number.isFinite(value) && value > 0) limit = value;
+      if (Number.isFinite(value) && value > 0) {
+        limit = value;
+        limitSet = true;
+      }
       i += 1;
     } else if (arg === '--out') {
       const raw = argv[i + 1];
@@ -1428,7 +1443,10 @@ function parseArgs(argv: readonly string[]): CliOptions {
     }
   }
 
-  return { limit, dryRun, outDir, concurrency, force, reparse };
+  // 给了 --ids 但没显式给 --limit 时，默认目标就是这批 ID 的数量；
+  // 两种情况（显式 --limit / 无 --ids）都保持原有行为不变。
+  const effectiveLimit = ids !== null && !limitSet ? Math.max(ids.length, 1) : limit;
+  return { limit: effectiveLimit, dryRun, outDir, concurrency, force, reparse, ids };
 }
 
 // ---------------------------------------------------------------------------
@@ -1559,8 +1577,20 @@ async function main(): Promise<void> {
     out(`榜单拉取失败（HTTP ${listResponse.status}），终止。`);
     return;
   }
-  const candidates = parseTopList(listResponse.body.toString('utf8'));
+  let candidates = parseTopList(listResponse.body.toString('utf8'));
   out(`榜单去重后共 ${candidates.length} 个书目`);
+
+  if (options.ids !== null) {
+    const wanted = new Set(options.ids);
+    const before = candidates.length;
+    candidates = candidates.filter((candidate) => wanted.has(candidate.id));
+    const seen = new Set(candidates.map((candidate) => candidate.id));
+    const missing = options.ids.filter((id) => !seen.has(id));
+    out(`--ids 指定 ${wanted.size} 本 → 榜单内命中 ${candidates.length} 本（原 ${before} 本）`);
+    if (missing.length > 0) {
+      out(`  ⚠ 榜单中未找到：${missing.join(', ')}（将不会被抓取）`);
+    }
+  }
 
   out('\n[2/4] 逐个读取 RDF 元数据并做版权判定（并发受全局限速约束）');
   const qualifying: CandidateMeta[] = [];

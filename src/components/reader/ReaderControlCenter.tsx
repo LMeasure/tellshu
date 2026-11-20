@@ -8,9 +8,8 @@ import {
   StickyNote,
   Trash2,
 } from 'lucide-react'
-import { Sheet } from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { NotesPanel, type NotesPanelProps } from '@/components/reader/NotesSheet'
 import {
   ListenPanel,
@@ -22,12 +21,14 @@ import type { ReaderPrefs } from '@/store/useAppStore'
 import type { ReadingBookmark } from '@/domain/types'
 
 /**
- * 综合控制中心 V3.0（2026-10-09 需求一）
+ * 综合控制中心（V3.3 交互）
  * ------------------------------------------------------------------
- * 底部弹窗升级为「综合控制中心」：顶部固定 5 项导航 ——
- *   目录 / 笔记 / 进度 / 听书 / 设置，点击切换下方内容区。
- * 显隐：单击正文 Toggle 呼出/隐藏；点击面板外空白关闭；面板内部一律
- * stopPropagation，避免拖滑块 / 输页码 / 切导航时误关。
+ * 底部导航栏 fixed 在屏幕最底部（icon-only，无文字），不被内容顶起：
+ *   · 默认只显示正文；点击正文 Toggle 显示 / 隐藏整个控制中心；
+ *   · 点击导航栏内部按钮 → 切换对应面板，不隐藏导航栏；
+ *   · 长按划词（活跃选区）不触发显隐（由 PageFlipContainer 的单击阈值拦截）。
+ * 面板 fixed 在导航栏上方（bottom-14），点击正文空白处 / 全局遮罩 → 清空
+ * 导航栏 + 面板 + 划线菜单，恢复纯阅读；弹窗内部一律 stopPropagation 防误关。
  */
 
 export type PanelTab = 'toc' | 'notes' | 'progress' | 'listen' | 'settings'
@@ -60,7 +61,7 @@ export interface ProgressPanelProps {
 
 interface Props {
   open: boolean
-  tab: PanelTab
+  tab: PanelTab | null
   onTabChange: (t: PanelTab) => void
   onClose: () => void
   toc: TocPanelProps
@@ -68,8 +69,8 @@ interface Props {
   progress: ProgressPanelProps
   listen: ListenPanelProps
   settings: {
-    tab: 'read' | 'memo'
-    onTabChange: (t: 'read' | 'memo') => void
+    mode: 'read' | 'memo'
+    onModeChange: (m: 'read' | 'memo') => void
     prefs: ReaderPrefs
     onChange: (patch: Partial<ReaderPrefs>) => void
     memo: MemoPanelProps
@@ -87,55 +88,69 @@ export function ReaderControlCenter({
   listen,
   settings,
 }: Props) {
-  return (
-    <Sheet open={open} onClose={onClose} className="!px-0 !pt-0">
-      {/* 面板内部一律 stopPropagation：拖滑块 / 输页码 / 切导航不触发关闭 */}
-      <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-        <div className="px-4 pt-1">
-          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-muted-foreground/25" aria-hidden />
-          {/* 顶部 5 项导航 */}
-          <div className="flex items-center justify-between gap-1" role="tablist">
-            {NAV.map((n) => {
-              const active = n.key === tab
-              const Icon = n.icon
-              return (
-                <button
-                  key={n.key}
-                  role="tab"
-                  aria-selected={active}
-                  aria-label={n.label}
-                  title={n.label}
-                  onClick={() => onTabChange(n.key)}
-                  className={cn(
-                    'flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-medium transition-colors touch-target',
-                    active ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary',
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                  {n.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+  function handleNav(key: PanelTab) {
+    if (open && tab === key) onClose()
+    else onTabChange(key)
+  }
 
-        <div className="max-h-[62vh] overflow-y-auto px-4 pb-4 pt-4">
+  if (!open) return null
+  return (
+    <>
+      {/* 底部导航栏：fixed 图标栏（无文字），点击正文才显示；不被内容顶起；点击内部不隐藏 */}
+      <nav
+        className="fixed inset-x-0 bottom-0 z-50 flex h-14 items-stretch border-t border-border/60 bg-card safe-bottom"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-label="阅读器导航"
+      >
+        {NAV.map((n) => {
+          const active = tab === n.key
+          const Icon = n.icon
+          return (
+            <button
+              key={n.key}
+              onClick={() => handleNav(n.key)}
+              aria-label={n.label}
+              aria-pressed={active}
+              title={n.label}
+              className={cn(
+                'flex flex-1 flex-col items-center justify-center gap-0 transition-colors touch-target',
+                active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Icon className={cn('h-6 w-6', active && 'drop-shadow-[0_0_6px_hsl(var(--primary)/0.5)]')} />
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* 面板：仅当选了某个导航图标（tab !== null）才显示，fixed 在导航栏上方（bottom-14）；点击内部不关闭 */}
+      {tab !== null && (
+      <div
+        className="fixed inset-x-0 bottom-14 z-50 max-h-[76vh] overflow-y-auto rounded-t-2xl bg-card shadow-soft animate-slide-up safe-bottom"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 pb-4 pt-3">
+          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-muted-foreground/25" aria-hidden />
           {tab === 'toc' && <TocPanel {...toc} />}
           {tab === 'notes' && <NotesPanel {...notes} />}
           {tab === 'progress' && <ProgressPanel {...progress} />}
           {tab === 'listen' && <ListenPanel {...listen} />}
           {tab === 'settings' && (
             <SettingsPanel
-              tab={settings.tab}
-              onTabChange={settings.onTabChange}
+              mode={settings.mode}
+              onModeChange={settings.onModeChange}
               prefs={settings.prefs}
               onChange={settings.onChange}
               memo={settings.memo}
+              onCloseAll={onClose}
             />
           )}
         </div>
       </div>
-    </Sheet>
+      )}
+    </>
   )
 }
 
@@ -218,14 +233,28 @@ function TocPanel({
  * 需求六：中间一个空心圆，左右各一条横杠（减号样式，不贯穿圆，
  * 与圆距约 2-4px，长度等于圆的直径），水平居中 flex。
  * 交互：输入框输入目标页码跳转；直接滑动中间的空心圆快速翻页。
+ * Bug 6 修复：改用 window 级 pointermove/up 监听 + touch-action:none，
+ * 避免触摸设备把横向拖动识别为滚动手势、触发 pointercancel 导致拖不动。
  */
 function ProgressPanel({ page, pageCount, onGoto }: ProgressPanelProps) {
   const [text, setText] = useState(String(page + 1))
   const draggingRef = useRef<{ x: number; page: number } | null>(null)
+  const moveRef = useRef<(e: PointerEvent) => void>(() => {})
+  const upRef = useRef<(e: PointerEvent) => void>(() => {})
 
   useEffect(() => {
     setText(String(page + 1))
   }, [page])
+
+  // 卸载时清理可能残留的 window 监听
+  useEffect(
+    () => () => {
+      window.removeEventListener('pointermove', moveRef.current)
+      window.removeEventListener('pointerup', upRef.current)
+      window.removeEventListener('pointercancel', upRef.current)
+    },
+    [],
+  )
 
   const clamp = (p: number) => Math.min(Math.max(p, 0), Math.max(0, pageCount - 1))
 
@@ -234,6 +263,28 @@ function ProgressPanel({ page, pageCount, onGoto }: ProgressPanelProps) {
     const n = Number(text)
     if (!Number.isFinite(n)) return
     onGoto(clamp(Math.round(n) - 1))
+  }
+
+  function onDown(e: React.PointerEvent) {
+    e.stopPropagation()
+    draggingRef.current = { x: e.clientX, page }
+    const move = (ev: PointerEvent) => {
+      const d = draggingRef.current
+      if (!d) return
+      const delta = Math.round((ev.clientX - d.x) / 22)
+      onGoto(clamp(d.page + delta))
+    }
+    const up = () => {
+      draggingRef.current = null
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    moveRef.current = move
+    upRef.current = up
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
 
   const CIRCLE = 28 // 直径
@@ -272,26 +323,9 @@ function ProgressPanel({ page, pageCount, onGoto }: ProgressPanelProps) {
           type="button"
           aria-label={`当前第 ${page + 1} 页，左右滑动快速翻页`}
           title="左右滑动快速翻页"
-          onPointerDown={(e) => {
-            e.stopPropagation()
-            draggingRef.current = { x: e.clientX, page }
-            ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
-          }}
-          onPointerMove={(e) => {
-            const d = draggingRef.current
-            if (!d) return
-            e.stopPropagation()
-            const delta = Math.round((e.clientX - d.x) / 48)
-            onGoto(clamp(d.page + delta))
-          }}
-          onPointerUp={() => {
-            draggingRef.current = null
-          }}
-          onPointerCancel={() => {
-            draggingRef.current = null
-          }}
+          onPointerDown={onDown}
           className="flex items-center justify-center rounded-full border-2 border-primary bg-card touch-target"
-          style={{ width: CIRCLE, height: CIRCLE }}
+          style={{ width: CIRCLE, height: CIRCLE, touchAction: 'none' }}
         >
           <span className="sr-only">拖动翻页</span>
         </button>

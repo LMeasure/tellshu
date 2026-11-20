@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Flame, Play, Sparkles, BookMarked, RefreshCw } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Bookshelf } from '@/components/home/Bookshelf'
+import { FireworkBurst } from '@/components/fx/FireworkBurst'
 import { repository, type CatalogBook } from '@/data/repository'
 import { getLayerCounts, type LayerCounts } from '@/domain/learning'
 
@@ -13,10 +14,15 @@ import { getLayerCounts, type LayerCounts } from '@/domain/learning'
  * 首页 / 今日学习：学习入口 + 生词本/错题/掌握统计 + 书架。
  * 2026-10-07 改版（需求 2/3/7）：学习路径整体移到复习页；书架换 Bookshelf
  * 组件（导入入口 + 长按多选管理）；页面只保留一套搜索入口（顶部搜索栏）。
+ * 2026-10-21：学习页「完成」跳回本页时带 location.state.firework，
+ * 此时放一轮烟花庆祝（放完自动卸载；刷新本页 state 消失，不会重放）。
  */
 export function Home() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [counts, setCounts] = useState<LayerCounts | null>(null)
+  /** 烟花庆祝（由学习页「完成」跳转触发） */
+  const [celebrate, setCelebrate] = useState(false)
 
   useEffect(() => {
     getLayerCounts()
@@ -26,6 +32,11 @@ export function Home() {
         setCounts({ new: 0, apply: 0, mastered: 0, wrong: 0, due: 0, total: 0 })
       })
   }, [])
+
+  useEffect(() => {
+    const st = location.state as { firework?: boolean } | null
+    if (st?.firework) setCelebrate(true)
+  }, [location.state])
 
   const c = counts ?? { new: 0, apply: 0, mastered: 0, wrong: 0, due: 0, total: 0 }
 
@@ -61,6 +72,9 @@ export function Home() {
 
       {/* 书架（导入入口 + 长按多选管理，见 Bookshelf） */}
       <Bookshelf />
+
+      {/* 学习完成庆祝：烟花放完自动卸载（prefers-reduced-motion 时 CSS 直接隐藏） */}
+      {celebrate && <FireworkBurst onDone={() => setCelebrate(false)} />}
     </div>
   )
 }

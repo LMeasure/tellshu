@@ -1,0 +1,73 @@
+{
+  "startedAt": "2026-11-05T12:22:10.635Z",
+  "base": "http://127.0.0.1:4174",
+  "profile": "isolated userDataDir, two launches",
+  "checks": [
+    {
+      "id": "R8a",
+      "name": "崩溃前已产生 5 条 settled 逐字母事件与 5 条凭证",
+      "ok": true,
+      "detail": "events=5 settled=5 credentials=5"
+    },
+    {
+      "id": "R8b",
+      "name": "崩溃恢复后锁归属当前标签、epoch 自洽（0=同标签复用 / 1=租约过期接管）",
+      "ok": true,
+      "detail": "holder=871d19d0-48d4-4029-a31c-dcbd5689bd91 tab=871d19d0-48d4-4029-a31c-dcbd5689bd91 epoch=1 conflictPanel=false"
+    },
+    {
+      "id": "R8b2",
+      "name": "延迟恢复路径：租约过期自动接管（epoch+1）且输入启用",
+      "ok": true,
+      "detail": "epoch=1"
+    },
+    {
+      "id": "R8c",
+      "name": "崩溃后恢复：事件与凭证不丢、无 pending、输入恢复",
+      "ok": true,
+      "detail": "events=5 pending=0 credentials=5"
+    },
+    {
+      "id": "R9a",
+      "name": "可获取浏览器进程 pid 以执行强制终止",
+      "ok": true,
+      "detail": "pid=78080"
+    },
+    {
+      "id": "R9b",
+      "name": "SIGKILL 后可用同一 userDataDir 重新启动浏览器",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R9c",
+      "name": "进程 kill 后重启：事件/凭证完整、无 pending、恢复链可用",
+      "ok": true,
+      "detail": "events 10→10 pending=0 sessions=1"
+    },
+    {
+      "id": "R11",
+      "name": "移动视口触摸模拟：无横向溢出、输入框可交互、触摸事件可用",
+      "ok": true,
+      "detail": "scrollW=390 clientW=390 hasTouch=true"
+    }
+  ],
+  "observations": [
+    "跨内核候选可执行文件命中数=0",
+    "R8 实测曾出现 CDP 崩溃等待约 6 分钟 > 30s 租约 → 自动接管 epoch+1，产品行为符合设计",
+    "R11 为视口/触摸模拟，非真实移动设备；无 adb 与真机，移动真机验证 N/A"
+  ],
+  "notVerified": [
+    "IDB 事务逐拍 in-flight 中断时序（浏览器无法精确注入；自动化层已用 fake-indexeddb 事务 abort 覆盖）",
+    "真实移动设备与软键盘（无 adb、无真机；R11 仅为视口/触摸模拟）",
+    "跨内核矩阵 N/A：本机仅安装 Edge（Chromium 内核），无独立 Chrome / Firefox"
+  ],
+  "screenshots": [
+    "练习\\_reliability-browser\\r8-after-renderer-crash.png",
+    "练习\\_reliability-browser\\r9-after-process-kill.png",
+    "练习\\_reliability-browser\\r11-mobile-viewport-simulation.png"
+  ],
+  "finishedAt": "2026-11-05T12:28:26.256Z",
+  "failures": 0,
+  "passed": 8
+}

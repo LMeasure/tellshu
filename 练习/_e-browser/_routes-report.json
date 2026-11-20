@@ -1,0 +1,75 @@
+{
+  "startedAt": "2026-10-21T17:02:17.630Z",
+  "base": "http://127.0.0.1:4174",
+  "edge": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "checks": [
+    {
+      "id": "R1.1",
+      "name": "/review 渲染出单词默写入口卡片",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R1.2",
+      "name": "/review 入口说明写明每轮词数来源（设置共用）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R1.3",
+      "name": "刷新后仍在 /review 且入口卡片稳定",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/review"
+    },
+    {
+      "id": "R1.4",
+      "name": "存在进行中默写会话时 /review 仍正常渲染入口",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R1.5",
+      "name": "/review 不会自动跳到默写页",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/review"
+    },
+    {
+      "id": "R2.1",
+      "name": "/result 仍是占位结算页",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/result"
+    },
+    {
+      "id": "R2.2",
+      "name": "/result 显示占位数（— / 0%）",
+      "ok": true,
+      "detail": "练习完成 答对 — / — 今日任务完成度 0% 连续天数 0 天  真实成绩将在接入学习数据与分层掌握后计算（Phase 1）。  去复习回到首页  连续学习"
+    },
+    {
+      "id": "R2.3",
+      "name": "/result 不含默写相关文案（不会与默写结果混淆）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R2.4",
+      "name": "/spelling-result 渲染的是默写结果（含逐词明细）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R2.5",
+      "name": "/spelling-result 与 /result 是两条独立路由，不复用占位页",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "screenshots": [
+    "练习\\_e-browser\\r1-review-refresh.png",
+    "练习\\_e-browser\\r2-result-placeholder.png",
+    "练习\\_e-browser\\r2-spelling-result.png"
+  ],
+  "edgeVersion": "Edg/155.0.4283.62",
+  "finishedAt": "2026-10-21T17:02:31.903Z",
+  "failures": 0
+}

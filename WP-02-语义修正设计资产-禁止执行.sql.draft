@@ -1,0 +1,843 @@
+-- =============================================================================
+-- WP-02 / WP-04 语义修正设计资产 · 禁止执行 / DESIGN DRAFT · DO NOT EXECUTE
+-- =============================================================================
+-- 文件性质：本轮【语义审计】新增的独立设计资产。
+--   * 扩展名 .sql.draft（不是 .sql），不在 server/sql/，不属于任何迁移链。
+--   * 与上一轮的 `WP-02-隔离SQL草稿-禁止执行.sql.draft` 并存：
+--     上一轮文件保持原样不动（其定义缺陷在本文件逐条修正），
+--     本文件是【修正方案】，两者均从未被任何数据库执行。
+--   * 本文件包含 DDL 提案与 PL/pgSQL 函数体示例，但一律【不执行】。
+--     入 schema 需 O-4A 授权 + 纯 PG 预演全绿。
+-- 纪律：未连接 PostgreSQL、未执行任何 DDL/DML/GRANT、未修改正式迁移或上游文档。
+-- 依据：V1.2.30 §5.1/§7.4；PG18 官方 PG-02 9.28.3 / PG-01 25.3 / PG-03 19.5.5-19.5.6
+--       / PG-04 19.12 / PG-05 13.3.4 / PG-06 19.11.1 / PG-07 19.5.5。
+-- 校验器：verify_stage_semantics.py（静态语义校验；不执行 SQL）。
+-- =============================================================================
+
+-- ###########################################################################
+-- §0 前置依赖（上一轮草稿未落实的部分，本文件显式列出）
+-- ###########################################################################
+-- 【F-D01】schema 与角色：
+--   CREATE SCHEMA IF NOT EXISTS shutree_sec;
+--   CREATE ROLE shutree_fn_owner NOSUPERUSER NOBYPASSRLS NOINHERIT
+--       NOCREATEDB NOCREATEROLE NOLOGIN;
+--   CREATE ROLE shutree_app;  CREATE ROLE shutree_worker;
+--   CREATE ROLE shutree_terminality_exec;
+--   CREATE ROLE shutree_evidence_collector;  CREATE ROLE shutree_evidence_verifier;
+--   GRANT USAGE ON SCHEMA shutree_sec TO shutree_fn_owner;
+--   REVOKE CREATE ON SCHEMA shutree_sec FROM PUBLIC, shutree_app, shutree_worker;
+-- 【F-D02】既有对象（本资产不 CREATE，需 O-4A 预演前核验存在与列结构）：
+--   app.object_outbox(OBJ-01) / app.promotion_intents(TRG-03 引用)
+--   shutree_sec.cross_gen_adjudication(OBJ-06) / cross_gen_decision_slot(OBJ-07)
+--   adjudication_log / outbox_audit / admin_action_log
+-- 【F-D03】ORIGIN 列缺口（TRG-09 引用但 OBJ-01 列清单中不存在）：
+--   ALTER TABLE app.object_outbox
+--       ADD COLUMN origin_outbox_id uuid NULL
+--           REFERENCES app.object_outbox(outbox_id);
+--   —— 仅为设计提案；若既有表已用别的列名表达来源，以实测结构为准，不得编造。
+-- 【F-D04】evidence_snapshot 锚点（供 OBJ-05 建立真 FK）：
+--   CREATE TABLE shutree_sec.evidence_snapshot (
+--       evidence_snapshot_id uuid PRIMARY KEY,
+--       created_at timestamptz NOT NULL DEFAULT now()
+--   );
+--   —— r2_evidence_record.evidence_snapshot_id 非唯一（UNIQUE 为 (sid,channel,op_type)），
+--      因此无法直接 FK；本锚点表是让消费槽位具备 DB 级引用完整性的最小方案。
+-- ###########################################################################
+
+
+-- ###########################################################################
+-- §1 【P0 修正】TRG-01 幂等六通道推进
+-- 缺陷：上一轮草稿用 `WHERE state='created' RETURNING INTO STRICT`。
+--       首条 confirmed 复核把 state 推到 verified 后，第 2~6 条复核 INSERT
+--       命中 0 行 → NO_DATA_FOUND → 整事务回滚 → 六通道永远无法齐备，
+--       consumable / consumed / terminal_proven 全部不可达。
+--       这是设计自身逻辑缺陷，与 U-4 外部能力缺失【无关】，必须区分。
+-- ###########################################################################
+-- CREATE OR REPLACE FUNCTION shutree_sec.trg_evidence_verification_fn()
+-- RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+-- SET search_path = pg_catalog, pg_temp AS $$
+-- DECLARE
+--   v_sid        uuid;
+--   v_state      text;
+--   v_channels   int;
+--   v_collector  text;
+--   v_hash       text;
+--   v_rows       int;
+-- BEGIN
+--   -- 跨表取证据本体（替代 V1.2.30 §5.1 不可执行的跨表 CHECK）
+--   SELECT r.evidence_snapshot_id, r.collector_id, r.payload_sha256
+--     INTO v_sid, v_collector, v_hash
+--     FROM shutree_sec.r2_evidence_record r
+--    WHERE r.evidence_record_id = NEW.evidence_record_id;
+--   IF NOT FOUND THEN
+--     RAISE EXCEPTION 'evidence_record_missing';
+--   END IF;
+--
+--   -- 三主体独立性 + 摘要一致性（F-01 的真实可执行替代）
+--   IF (NEW.verifier_id IS DISTINCT FROM v_collector) IS NOT TRUE
+--      OR (NEW.verifier_org_unit IS DISTINCT FROM
+--          (SELECT k.org_unit FROM shutree_sec.evidence_signing_key k
+--            WHERE k.key_id = v_collector)) IS NOT TRUE
+--      OR (NEW.verified_payload_sha256 = v_hash) IS NOT TRUE
+--      OR (NEW.verification_result = 'confirmed') IS NOT TRUE THEN
+--     RAISE EXCEPTION 'verification_rejected';
+--   END IF;
+--
+--   SELECT c.state INTO v_state
+--     FROM shutree_sec.r2_evidence_consumption c
+--    WHERE c.evidence_snapshot_id = v_sid FOR UPDATE;      -- LO-1
+--   IF NOT FOUND THEN RAISE EXCEPTION 'slot_missing'; END IF;
+--
+--   IF v_state = 'created' THEN
+--     -- 首条复核：created → verified（幂等，允许 0 行）
+--     UPDATE shutree_sec.r2_evidence_consumption
+--        SET state = 'verified', verified_at = now()
+--      WHERE evidence_snapshot_id = v_sid AND state = 'created';
+--     GET DIAGNOSTICS v_rows = ROW_COUNT;
+--     IF v_rows > 1 THEN RAISE EXCEPTION 'cas_multi_rows'; END IF;
+--   ELSIF v_state = 'verified' THEN
+--     -- 后续复核：不改 state；仅检查六通道是否齐备后推进 consumable
+--     SELECT count(DISTINCT r.channel) INTO v_channels
+--       FROM shutree_sec.r2_evidence_record r
+--       JOIN shutree_sec.r2_evidence_verification v
+--         ON v.evidence_record_id = r.evidence_record_id
+--      WHERE r.evidence_snapshot_id = v_sid
+--        AND (v.verification_result = 'confirmed') IS TRUE
+--        AND (v.verified_payload_sha256 = r.payload_sha256) IS TRUE;
+--     IF v_channels = 6 THEN
+--       UPDATE shutree_sec.r2_evidence_consumption
+--          SET state = 'consumable'
+--        WHERE evidence_snapshot_id = v_sid AND state = 'verified';
+--       GET DIAGNOSTICS v_rows = ROW_COUNT;
+--       IF v_rows > 1 THEN RAISE EXCEPTION 'cas_multi_rows'; END IF;
+--     END IF;
+--     -- 注意：此处【不】使用 RETURNING ... INTO STRICT，允许 0 行（幂等）。
+--   ELSIF v_state IN ('consumable','consumed','rejected') THEN
+--     RAISE EXCEPTION 'verification_after_terminal';
+--   END IF;
+--   RETURN NEW;
+-- END $$;
+-- CREATE TRIGGER trg_evidence_verification
+--   AFTER INSERT ON shutree_sec.r2_evidence_verification
+--   FOR EACH ROW EXECUTE FUNCTION shutree_sec.trg_evidence_verification_fn();
+
+
+-- ###########################################################################
+-- §2 【P0 修正】TRG-02 增加 BEFORE INSERT 守卫 + 完整 CHECK
+-- 缺陷：上一轮只有 BEFORE UPDATE OR DELETE。可以直接 INSERT 一行
+--       state='consumed' 并填满 consumed_*，凭空伪造『已消费证据』。
+-- ###########################################################################
+-- CREATE OR REPLACE FUNCTION shutree_sec.trg_evidence_consumption_immutable_fn()
+-- RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+-- SET search_path = pg_catalog, pg_temp AS $$
+-- BEGIN
+--   IF TG_OP = 'INSERT' THEN
+--     -- 终局态不可经 INSERT 伪造；初始态恒为 created
+--     IF NEW.state IS DISTINCT FROM 'created'
+--        OR NEW.consumed_at IS NOT NULL
+--        OR NEW.consumed_by_outbox_id IS NOT NULL
+--        OR NEW.consumed_by_request_id IS NOT NULL
+--        OR NEW.consumed_by_attempt_no IS NOT NULL
+--        OR NEW.consumed_by_lease_epoch IS NOT NULL
+--        OR NEW.consumption_txid IS NOT NULL
+--        OR NEW.consumption_db_role IS NOT NULL
+--        OR NEW.rejected_at IS NOT NULL THEN
+--       RAISE EXCEPTION 'terminal_state_not_insertable';
+--     END IF;
+--     RETURN NEW;
+--   END IF;
+--   IF TG_OP = 'DELETE' THEN
+--     RAISE EXCEPTION 'terminal_state_immutable';
+--   END IF;
+--   -- UPDATE：白名单转换（T-E1..T-E7）
+--   IF OLD.state IN ('consumed','rejected') THEN
+--     RAISE EXCEPTION 'terminal_state_immutable';
+--   END IF;
+--   IF NEW.state = 'revoked' THEN
+--     RAISE EXCEPTION 'revoked_state_forbidden';       -- T-E7
+--   END IF;
+--   IF NOT (
+--        (OLD.state='created'     AND NEW.state IN ('verified','rejected'))
+--     OR (OLD.state='verified'    AND NEW.state IN ('consumable','rejected'))
+--     OR (OLD.state='consumable'  AND NEW.state IN ('consumed','rejected'))
+--   ) THEN
+--     RAISE EXCEPTION 'illegal_evidence_transition';
+--   END IF;
+--   -- 消费事实不可变：一旦写入不得改写
+--   IF OLD.consumed_at IS NOT NULL
+--      AND (NEW.consumed_at IS DISTINCT FROM OLD.consumed_at
+--        OR NEW.consumed_by_outbox_id IS DISTINCT FROM OLD.consumed_by_outbox_id
+--        OR NEW.consumption_txid IS DISTINCT FROM OLD.consumption_txid) THEN
+--     RAISE EXCEPTION 'consumption_fact_immutable';
+--   END IF;
+--   RETURN NEW;
+-- END $$;
+-- CREATE TRIGGER trg_evidence_consumption_immutable
+--   BEFORE INSERT OR UPDATE OR DELETE ON shutree_sec.r2_evidence_consumption
+--   FOR EACH ROW EXECUTE FUNCTION shutree_sec.trg_evidence_consumption_immutable_fn();
+--
+-- -- 完整 CHECK（补上一轮只覆盖 consumed_at 一列的缺口）
+-- ALTER TABLE shutree_sec.r2_evidence_consumption
+--   ADD CONSTRAINT ck_consumption_columns
+--   CHECK (((state <> 'consumed') IS NOT TRUE
+--           OR (consumed_at IS NOT NULL AND consumed_by_outbox_id IS NOT NULL
+--               AND consumption_txid IS NOT NULL AND consumption_db_role IS NOT NULL)) IS TRUE),
+--   ADD CONSTRAINT ck_no_consumption_cols_when_not_consumed
+--   CHECK (((state = 'consumed') IS NOT TRUE
+--           OR (consumed_at IS NULL AND consumed_by_outbox_id IS NULL
+--               AND consumed_by_request_id IS NULL AND consumed_by_attempt_no IS NULL
+--               AND consumed_by_lease_epoch IS NULL AND consumption_txid IS NULL
+--               AND consumption_db_role IS NULL)) IS TRUE),
+--   ADD CONSTRAINT ck_rejected_requires_reason
+--   CHECK (((state = 'rejected') IS NOT TRUE
+--           OR (rejected_at IS NOT NULL AND reject_reason IS NOT NULL)) IS TRUE);
+-- ALTER TABLE shutree_sec.r2_evidence_consumption
+--   ADD CONSTRAINT fk_consumption_snapshot
+--   FOREIGN KEY (evidence_snapshot_id)
+--   REFERENCES shutree_sec.evidence_snapshot(evidence_snapshot_id);   -- 依赖 F-D04
+
+
+-- ###########################################################################
+-- §3 【P1 修正】跨表约束的可执行替代 + FK / NOT NULL 落实
+-- ###########################################################################
+-- -- OBJ-06：phase NOT NULL 上一轮只写在注释里（NULL 会让部分唯一索引失效）
+-- ALTER TABLE shutree_sec.cross_gen_adjudication
+--   ALTER COLUMN phase SET NOT NULL;
+-- -- OBJ-07：上一轮只写了 1 个 FK，另 2 个是『同名模式』占位符 —— 此处全部展开
+-- ALTER TABLE shutree_sec.cross_gen_decision_slot
+--   ADD CONSTRAINT fk_cg_reg FOREIGN KEY (registered_adjudication_id)
+--       REFERENCES shutree_sec.cross_gen_adjudication(adjudication_id),
+--   ADD CONSTRAINT fk_cg_final FOREIGN KEY (final_adjudication_id)
+--       REFERENCES shutree_sec.cross_gen_adjudication(adjudication_id),
+--   ADD CONSTRAINT fk_cg_dispatched FOREIGN KEY (dispatched_adjudication_id)
+--       REFERENCES shutree_sec.cross_gen_adjudication(adjudication_id),
+--   ADD CONSTRAINT fk_cg_quad FOREIGN KEY
+--       (outbox_id, from_gen, to_gen, final_adjudication_id)
+--       REFERENCES shutree_sec.cross_gen_adjudication
+--       (outbox_id, from_gen, to_gen, adjudication_id);   -- 依赖 uq_cg_audit_quad
+--
+-- -- TRG-04：代次/相位/决策逐项一致的【真实可执行】函数体示例
+-- CREATE OR REPLACE FUNCTION shutree_sec.trg_cg_slot_matches_audit_fn()
+-- RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+-- SET search_path = pg_catalog, pg_temp AS $$
+-- DECLARE v_phase text; v_decision text; v_og bigint; v_ng bigint; v_oid uuid;
+-- BEGIN
+--   IF NEW.final_phase IS NULL THEN RETURN NEW; END IF;
+--   SELECT a.phase, a.decision, a.from_gen, a.to_gen, a.outbox_id
+--     INTO v_phase, v_decision, v_og, v_ng, v_oid
+--     FROM shutree_sec.cross_gen_adjudication a
+--    WHERE a.adjudication_id = NEW.final_adjudication_id;
+--   IF NOT FOUND THEN RAISE EXCEPTION 'cg_slot_audit_mismatch'; END IF;
+--   IF (NEW.final_phase = v_phase) IS NOT TRUE
+--      OR (NEW.final_decision = v_decision) IS NOT TRUE
+--      OR (NEW.from_gen = v_og) IS NOT TRUE
+--      OR (NEW.to_gen = v_ng) IS NOT TRUE
+--      OR (NEW.outbox_id = v_oid) IS NOT TRUE THEN
+--     RAISE EXCEPTION 'cg_slot_audit_mismatch';
+--   END IF;
+--   RETURN NEW;
+-- END $$;
+-- CREATE TRIGGER trg_cg_slot_matches_audit
+--   BEFORE INSERT OR UPDATE ON shutree_sec.cross_gen_decision_slot
+--   FOR EACH ROW EXECUTE FUNCTION shutree_sec.trg_cg_slot_matches_audit_fn();
+
+
+-- ###########################################################################
+-- §4 【P1 修正】受控函数的最小权限链（上一轮只有占位符 `<专用角色>`）
+-- 6 个函数：terminalEvidenceAuthentic / terminalEvidenceConsumable /
+--          terminalProvenState / sp_terminalize / sp_requeue /
+--          sp_evidence_collect + sp_evidence_verify
+-- 统一模式：SECURITY DEFINER + SET search_path = pg_catalog, pg_temp
+--          + 函数体全 schema 限定 + OWNER shutree_fn_owner
+--          + REVOKE EXECUTE FROM PUBLIC + GRANT 给具名专用角色
+-- ###########################################################################
+-- CREATE OR REPLACE FUNCTION shutree_sec.sp_terminalize(p_old_id uuid, p_sid uuid)
+-- RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+-- SET search_path = pg_catalog, pg_temp AS $$
+-- BEGIN
+--   -- 事务骨架见 §6；此处仅示意签名与权限，函数体为设计伪代码
+--   NULL;
+-- END $$;
+-- ALTER FUNCTION shutree_sec.sp_terminalize(uuid, uuid) OWNER TO shutree_fn_owner;
+-- REVOKE EXECUTE ON FUNCTION shutree_sec.sp_terminalize(uuid, uuid) FROM PUBLIC;
+-- GRANT  EXECUTE ON FUNCTION shutree_sec.sp_terminalize(uuid, uuid) TO shutree_terminality_exec;
+-- -- 其余 5 个函数同型：逐一 ALTER OWNER / REVOKE PUBLIC / GRANT TO 具名角色。
+-- -- 调用方布尔参数恒为 0（caller_booleans = []），不接受任何自证参数。
+-- GRANT USAGE ON SCHEMA shutree_sec TO shutree_terminality_exec,
+--       shutree_evidence_collector, shutree_evidence_verifier;
+
+
+-- ###########################################################################
+-- §5 【WP-04 数据归属修正】manifest 与 recovery_runs
+-- 官方 PG-07 19.5.5：恢复目标设置『仅适用于恢复期间』『后续恢复必须重置』；
+-- PG-03 19.5.6：『只能在服务器启动时设置』且『同一时刻至多一个恢复目标』；
+-- pause 下可『改到更晚目标并重启继续恢复』 ⇒ 同一 base backup 允许多个不同 T。
+-- 结论：T 是【单次恢复任务参数】，不是备份固有属性 ⇒ 从 manifest 移出。
+-- ###########################################################################
+-- -- 5.1 修正后的 backup_manifests（只存备份元数据）
+-- CREATE TABLE shutree_sec.backup_manifests (
+--     manifest_id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     backup_label          text NOT NULL,
+--     backup_start_lsn      pg_lsn NOT NULL,          -- S：备份固有
+--     backup_stop_lsn       pg_lsn NOT NULL,          -- E：备份固有，T 的下界
+--     backup_end_time       timestamptz NOT NULL,     -- B：备份固有
+--     backup_label_ref      text NOT NULL,
+--     tablespace_map_ref    text,
+--     timeline              bigint NOT NULL,
+--     wal_continuity        boolean NOT NULL,         -- 截至 E 的 WAL 连续性
+--     asset_snapshot        jsonb NOT NULL,
+--     r2_object_list        jsonb,
+--     fence_gen             bigint,
+--     seq                   bigint,
+--     hmac                  text NOT NULL,
+--     created_at            timestamptz NOT NULL DEFAULT now(),
+--     CHECK ((backup_start_lsn <= backup_stop_lsn) IS TRUE),
+--     CHECK ((wal_continuity) IS TRUE),
+--     CHECK ((backup_label_ref NOT LIKE '%/pg_data/%') IS TRUE)
+-- );
+-- -- 【移除】recovery_target_lsn 列 与 CHECK(backup_stop_lsn <= recovery_target_lsn)
+-- -- 理由：一个 manifest 只能存一个 T，无法记录同一备份的多次恢复；
+-- --       且 manifest 随 base backup+WAL 同备同恢复，恢复出的库会携带过期 T。
+--
+-- -- 5.2 恢复任务台账（1 manifest : N runs）
+-- -- 部署位置：恢复目标集群【之外】的控制平面/独立审计库。
+-- -- 若置于被恢复集群内，恢复会把它回滚到备份时点，审计链断裂。
+-- CREATE TABLE shutree_sec.recovery_runs (
+--     run_id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     manifest_id                uuid NOT NULL,        -- 【逻辑引用】跨库，不建物理 FK
+--     manifest_content_sha256    text NOT NULL,        -- 逻辑引用的内容摘要(独立核验锚点)
+--     manifest_hmac              text NOT NULL,        -- 由 backup_manifests.hmac 携带的防篡改签名
+--     manifest_verified          text NOT NULL
+--         CHECK (manifest_verified IN ('pending_external','verified','unverifiable')),
+--     manifest_verify_err        text,                 -- 外部审计库不可用时记录原因
+--     requested_target_lsn       pg_lsn NOT NULL,      -- T：单次任务参数
+--     recovery_target_inclusive  boolean NOT NULL DEFAULT true,
+--     recovery_target_timeline   text NOT NULL,
+--     recovery_target_action     text NOT NULL
+--         CHECK (recovery_target_action IN ('pause','promote','shutdown')),
+--     precheck_result            jsonb NOT NULL,       -- S<=E<=T<=WAL_end / 单一 GUC / W 连续
+--     actual_stop_lsn            pg_lsn,               -- 恢复后回填；未实测一律 NULL
+--     actual_stop_time           timestamptz,
+--     actual_timeline            bigint,
+--     verification_result        jsonb,                -- asset_snapshot / r2_object_list 比对
+--     verified_by                text,
+--     status                     text NOT NULL
+--         CHECK (status IN ('planned','running','paused','verified','failed','aborted')),
+--     failure_reason             text,
+--     started_at                 timestamptz NOT NULL,
+--     finished_at                timestamptz,
+--     created_at                 timestamptz NOT NULL DEFAULT now()
+-- );
+-- REVOKE UPDATE, DELETE, TRUNCATE ON shutree_sec.recovery_runs FROM PUBLIC;
+--
+-- -- 5.2.1 跨库逻辑引用的独立核验（替代物理 FK）
+-- -- 【架构与跨库访问方式见 §8；本函数不再自行跨库查询，跨库取数由控制平面 Worker 负责】
+-- -- 权威记录位置：backup_manifests 在恢复目标集群【之内】；
+-- --             recovery_runs 在控制平面/独立审计库【之外】。
+-- --             ⇒ 二者跨数据库，PG 物理 FK 无法成立，改用逻辑引用 + 内容摘要 + 签名 + 独立核验。
+-- -- 携带 manifest 是【快照】：recovery_runs 落库时复制 manifest 的
+-- --             content_sha256 + hmac（见 5.2 三列），而非持有活引用。
+-- -- 外部审计库不可用：manifest_verified='pending_external'，记录 manifest_verify_err，
+-- --             该 run 不得被 certify；待审计库恢复后由本函数重验。
+-- -- 跨库不一致发现：核对 manifest_content_sha256 与从审计库取回的当前 manifest 摘要，
+-- --             不一致 ⇒ manifest_verified='unverifiable' 并写入 manifest_verify_err。
+-- -- 回滚后审计链证明：recovery_runs 在恢复目标集群之外，集群恢复回滚不影响本表；
+-- --             重验只需重跑本函数，独立核验不依赖被恢复集群的状态。
+-- CREATE OR REPLACE FUNCTION shutree_sec.sp_verify_recovery_manifest(
+--     p_run_id uuid,
+--     p_live_content_sha256 text,   -- 由控制平面 Worker 经显式认证通道从 DB-A 取回后传入
+--     p_live_hmac text)             -- 本函数【不再】自行跨库查询；跨库访问由 Worker 负责
+-- RETURNS text LANGUAGE plpgsql SECURITY DEFINER
+-- SET search_path = pg_catalog, pg_temp AS $$
+-- DECLARE v_mid uuid; v_sha text; v_hmac text; v_live_sha text; v_live_hmac text;
+-- BEGIN
+--   SELECT r.manifest_id, r.manifest_content_sha256, r.manifest_hmac
+--     INTO v_mid, v_sha, v_hmac
+--     FROM shutree_sec.recovery_runs r WHERE r.run_id = p_run_id;
+--   IF NOT FOUND THEN RAISE EXCEPTION 'recovery_run_missing'; END IF;
+--   -- 跨库访问由【控制平面 Worker】唯一负责：Worker 经显式认证 API 从 DB-A
+--   -- 取回当前 manifest 的 content_sha256 与 hmac，再作为参数传入本函数。
+--   -- 本函数【不】直接查询 audit_store.*（PG 普通函数无法跨库，且会引入未授权依赖）。
+--   v_live_sha  := p_live_content_sha256;
+--   v_live_hmac := p_live_hmac;
+--   IF (v_live_sha IS NULL OR v_live_hmac IS NULL) THEN
+--     -- 外部审计库（DB-A）经 Worker 取数失败：保持 pending，不 fail-open
+--     UPDATE shutree_sec.recovery_runs
+--        SET manifest_verified = 'pending_external',
+--            manifest_verify_err = 'audit_store_unavailable'
+--      WHERE run_id = p_run_id;
+--     RETURN 'pending_external';
+--   END IF;
+--   IF (v_live_sha IS DISTINCT FROM v_sha) OR (v_live_hmac IS DISTINCT FROM v_hmac) THEN
+--     UPDATE shutree_sec.recovery_runs
+--        SET manifest_verified = 'unverifiable',
+--            manifest_verify_err = 'manifest_mismatch'
+--      WHERE run_id = p_run_id;
+--     RETURN 'unverifiable';
+--   END IF;
+--   UPDATE shutree_sec.recovery_runs
+--      SET manifest_verified = 'verified', manifest_verify_err = NULL
+--    WHERE run_id = p_run_id;
+--   RETURN 'verified';
+-- END $$;
+-- ALTER FUNCTION shutree_sec.sp_verify_recovery_manifest(uuid) OWNER TO shutree_fn_owner;
+-- REVOKE EXECUTE ON FUNCTION shutree_sec.sp_verify_recovery_manifest(uuid, text, text) FROM PUBLIC;
+--
+-- -- 5.3 T >= E 约束重定位：CHECK 不能跨表 ⇒ 用受控函数做前置校验
+-- CREATE OR REPLACE FUNCTION shutree_sec.sp_recovery_precheck(p_run_id uuid)
+-- RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+-- SET search_path = pg_catalog, pg_temp AS $$
+-- DECLARE v_e pg_lsn; v_s pg_lsn; v_t pg_lsn; v_wal boolean;
+-- BEGIN
+--   SELECT m.backup_start_lsn, m.backup_stop_lsn, m.wal_continuity, r.requested_target_lsn
+--     INTO v_s, v_e, v_wal, v_t
+--     FROM shutree_sec.recovery_runs r
+--     JOIN shutree_sec.backup_manifests m ON m.manifest_id = r.manifest_id
+--    WHERE r.run_id = p_run_id;
+--   IF NOT FOUND THEN RAISE EXCEPTION 'recovery_run_missing'; END IF;
+--   IF (v_s <= v_e) IS NOT TRUE OR (v_e <= v_t) IS NOT TRUE
+--      OR (v_wal) IS NOT TRUE THEN
+--     RAISE EXCEPTION 'recovery_precheck_abort';
+--   END IF;
+--   -- 单一恢复目标 GUC 是【恢复配置约束】，由编排器生成
+--   -- postgresql.auto.conf 时断言，结果写入 precheck_result；不是 DB 列约束。
+--   RETURN jsonb_build_object('S', v_s, 'E', v_e, 'T', v_t,
+--                             'wal_continuity', v_wal, 'single_guc_only', true);
+-- END $$;
+-- ALTER FUNCTION shutree_sec.sp_recovery_precheck(uuid) OWNER TO shutree_fn_owner;
+-- REVOKE EXECUTE ON FUNCTION shutree_sec.sp_recovery_precheck(uuid) FROM PUBLIC;
+
+
+-- ###########################################################################
+-- §6 事务路径的锁顺序（逐路径声明，供校验器逐条检查，不只看关键词存在）
+-- ###########################################################################
+-- PATH T-TERMINALIZE      : LO-0 → LO-1 → LO-2 → LO-3(只读) → LO-4
+-- PATH T-CROSSGEN-DECIDE  : LO-0 → LO-1 → LO-2 → LO-3(只读) → LO-4
+-- PATH T-REQUEUE          : LO-0 → LO-1 → LO-2 → LO-3(只读) → LO-4
+-- PATH T-KEY-REVOKE       : LO-0(同命名空间) → LO-3(只读) → LO-4
+-- PATH settleErrorEvent   : LO-0 → LO-1 → LO-2 → LO-3(只读) → LO-4
+-- PATH TRG-01 复核推进    : LO-1(槽位行 FOR UPDATE，在复核 INSERT 事务内)
+-- PATH sp_recovery_precheck: 只读，无行锁
+-- 【统一性】所有写路径以相同顺序取锁 ⇒ PG-05 13.3.4：无死锁环。
+-- 【LW-02】不同主行先锁后争同一共享槽位 = 普通阻塞(单边等待图)，不是死锁。
+-- 【LW-03】仅当两事务以相反顺序取同一组锁且成环才是 40P01；
+--          PG 只 abort 其中一个，胜者继续并可 COMMIT。
+-- 【W1/W2/W3】同一事务唯一 COMMIT；CAS 用 RETURNING ... INTO STRICT +
+--          GET DIAGNOSTICS ROW_COUNT，<>1 立即 ROLLBACK；
+--          但 TRG-01 的幂等分支【不得】用 INTO STRICT 强制 1 行（见 §1）。
+-- 失败出口 F1~F7 全部整事务 ROLLBACK 或 F4 幂等 COMMIT，禁止半完成状态。
+
+-- ###########################################################################
+-- §7 TRG-01 六通道并发可达性证明（十场景 · 逐事务时间线 + 等待图）
+-- 目标：证明『consumable 原子可达』且『fail-closed：无永远停 verified 路径』。
+-- 前提：§1 幂等双分支 + GET DIAGNOSTICS ROW_COUNT 允许 0 行 + COUNT(DISTINCT channel)=6。
+-- 共享不变量：每个复核 INSERT 在触发器内对槽位行 FOR UPDATE（LO-1）；
+--   行锁随事务结束释放，无孤儿锁；created→verified 允许 0 行（幂等）。
+-- ###########################################################################
+
+-- 场景 1 · 六事务串行、各不同 channel（基线可达性）
+--   T1..T6 依次 INSERT verification(ch=C1..C6)。
+--   T1: state=created → UPDATE→verified（GET DIAGNOSTICS=1 允许）；COMMIT。
+--   T2..T6: state=verified；COUNT(DISTINCT channel)=2,3,4,5,6；
+--           T6 时 =6 → UPDATE state='consumable'（ROW_COUNT=1）；COMMIT。
+--   结论：consumable 在第 6 个 COMMIT 后原子可见；无中途停在 verified 不可达。
+
+-- 场景 2 · 六事务并发、各不同 channel（并发可达性）
+--   六个事务同时 INSERT，均未提交；每个在触发器内对槽位行 FOR UPDATE（LO-1）。
+--   等待图：仅一个事务先获行锁，其余单边等待（T2→T1，无环 = 普通阻塞，见 §6 LW-02）。
+--   获锁者：created→verified（0 行允许）→ COMMIT 释放锁；
+--   下一获锁者见 verified，COUNT=2；… 第 6 个见 COUNT=6 → consumable → COMMIT。
+--   结论：并发不破坏可达性；行锁串行化保证 COUNT 单调递增到 6。
+
+-- 场景 3 · 同 channel 重复复核（去重维度）
+--   T1 ch=C1 → created→verified；T2 ch=C1 again。
+--   T2 的 COUNT(DISTINCT channel) 仍为 1（C1 重复不计）→ 不推进，state 保持 verified。
+--   结论：必须 6 个【不同】channel，重复 channel 永不误推进。
+
+-- 场景 4 · 同 channel 异 verifier（三主体 + 去重）
+--   T1 ch=C1 verifier=V1 confirmed；T2 ch=C1 verifier=V2 confirmed。
+--   仍只计 1 distinct channel；且 verified_payload_sha256 须 == r.payload_sha256（同快照）。
+--   channel 维度仍 =1 → 不推进。结论：channel 是去重主键，verifier 不同不改变计数。
+
+-- 场景 5 · 第六通道精确触发（原子推进边界）
+--   T1..T5 完成后 state=verified，COUNT=5；T6 插入 C6 → COUNT=6。
+--   触发器内 IF v_channels=6 THEN UPDATE state='consumable'（CAS, ROW_COUNT=1）。
+--   COMMIT 后 consumable 可见。结论：『恰好第六个不同 channel』触发原子推进，不多不少。
+
+-- 场景 6 · 验证失败（result != confirmed，fail-closed）
+--   T 插入 verification 但 verification_result='rejected'。
+--   触发器 IF (verification_result='confirmed') IS TRUE 不满足 → RAISE verification_rejected → ROLLBACK。
+--   state 不变；该记录不被 COUNT（WHERE 排除非 confirmed）。结论：坏复核被拒，不污染计数。
+
+-- 场景 7 · verifier == collector（三主体独立性）
+--   T 插入 verification 但 verifier_id == collector_id（同一主体）。
+--   触发器 IF (verifier_id IS DISTINCT FROM v_collector) IS NOT TRUE → RAISE verification_rejected → ROLLBACK。
+--   结论：复核者不得是被复核证据的收集者，强制三主体分离。
+
+-- 场景 8 · 摘要不一致（一致性闸门）
+--   T 插入 verification 但 verified_payload_sha256 != r.payload_sha256。
+--   触发器 → RAISE verification_rejected → ROLLBACK。结论：摘要不一致即拒，防伪造证据。
+
+-- 场景 9 · 同 sid 争同一槽位（多 snapshot 并发，普通阻塞非死锁）
+--   同一 sid 下两个不同复核事务（不同 evidence_record_id / 多 snapshot）都试图对【同一槽位行】FOR UPDATE（LO-1）。
+--   【第九轮修正】原草稿此处误写「两个不同 sid」，与标题「同 sid 争同一槽位」矛盾；槽位行主键为
+--     evidence_snapshot_id，不同 sid 不可能映射到同一行，故修正为「同一 sid 下两个不同复核事务」。
+--   等待图：T2→T1（单边），普通阻塞；获锁者完成并提交，败者继续（见 §6 LW-02）。
+--   PG 只 abort 一个仅当成环（40P01）；此处无环，二者皆可最终 COMMIT，胜者先、败者后。
+--   结论：争槽位是普通阻塞，不是死锁；不会双回滚。
+
+-- 场景 10 · 部分提交后崩溃（可恢复性）
+--   T1..T3 COMMIT（持久化 3 条 confirmed），T4..T6 未提交即崩溃。
+--   恢复后：state=verified，COUNT=3（已提交者持久）；新事务 T7..T9 插入剩余 C4..C6。
+--   T9 时 COUNT=6 → consumable → COMMIT。结论：协议对中途崩溃可恢复，无需从头重做；
+--   原子性由 COMMIT 边界保证，无半完成状态。
+
+-- 综合结论：十场景覆盖了「串行/并发/同channel/异verifier/精确触发/验证失败/
+--   三主体/摘要/争槽位/崩溃」全部路径；consumable 在『6 个不同 channel 且全部
+--   confirmed 且三主体分离且摘要一致』的唯一点原子到达；任一前置不满足即 fail-closed
+--   （ROLLBACK 或停在 verified 等待补全会话），不存在永远停在 verified 不可达的死路径。
+
+-- ###########################################################################
+-- §8 WP-02 跨库核验机制 · 真实执行边界、协议字段与 13 场景
+-- 本轮（第 7 轮）对 §5.2.1 的深化：明确【可落地的跨库访问架构】，
+-- 而非假定『PG 普通函数可直接查另一库』。所有结论均为静态设计，未执行。
+-- ###########################################################################
+
+-- §8.0 跨库访问架构十维度选型对比（独立控制平面 Worker vs 受控 postgres_fdw）
+--   【结论：唯一推荐 = 控制平面 Worker；受控 FDW 不作为跨库机制。】
+--   维度            | 控制平面 Worker（推荐）              | 受控 postgres_fdw（不采用）
+--   ---------------+--------------------------------------+------------------------------------------
+--   ① 访问边界     | 独立进程，显式认证 API 取数；DB-B 函  | 外部表映射 DB-A，访问边界隐含在
+--                  | 数不跨库                              | 长连接中，边界模糊
+--   ② 身份认证     | 每请求 mTLS/短期令牌，主体可审计       | 依赖 DB 角色，难做请求级身份绑定
+--   ③ 网络隔离     | Worker 与 DB-A 间显式 TLS，可限源      | FDW 在 DB-B 会话内建连，隔离弱
+--   ④ 超时重试     | 编排器控制超时/重试/退避，幂等可重发   | FDW 查询超时即报错，无内置重试语义
+--   ⑤ 幂等         | (run_id, request_id) 去重，可重发      | FDW 查询无请求标识，重试难去重
+--   ⑥ 审计         | 每次核验写审计日志（请求/主体/结果）  | 外部表访问混杂于普通查询，难独立审计
+--   ⑦ 数据一致性   | 取快照版本+内容摘要+时间绑定，防 TOCTOU| 外部表读到的是查询时刻快照，
+--                  |                                      | 版本绑定需额外工程，易漂移
+--   ⑧ 故障恢复     | Worker 崩溃无副作用，新 request_id 恢复| FDW 失败回滚难区分是取数失败还是本地写
+--   ⑨ 权限最小化   | 仅 shutree_audit_ro 只读 DB-A          | FDW 映射需暴露整表视图，暴露面更大
+--   ⑩ 运维复杂度   | 独立部署/监控/扩容，与 PG 解耦          | 绑定 PG 版本与扩展，升级耦合高
+--   ⇒ 10 维度中 FDW 在 ②③⑤⑥⑦⑧ 至少 6 维不满足条件；
+--     Worker 全维度满足且可独立运维 ⇒ 定案唯一方案=控制平面 Worker。
+
+-- §8.1 真实执行边界 · 7 问逐一回答
+--   Q1 两库各自归属？
+--      DB-A = 恢复目标集群之内（被恢复实例所在 PG）。backup_manifests 在 DB-A。
+--      DB-B = 控制平面 / 独立审计库（恢复目标集群之外）。recovery_runs 与
+--             sp_verify_recovery_manifest 都在 DB-B。
+--      ⇒ 二者跨数据库，PG 物理 FK 无法成立（§5.2 已改用逻辑引用）。
+--   Q2 核验函数部署在何处？
+--      部署在 DB-B（与 recovery_runs 同库）。它【只】操作 DB-B 内 recovery_runs，
+--      不直连 DB-A。
+--   Q3 如何跨库访问 DB-A 的 manifest？
+--      【唯一方案：控制平面 Worker（禁止 FDW 作为跨库机制，禁止 PG 普通函数直查）】：
+--        (x) 控制平面 Worker 是【唯一】跨库取数组件：Worker 经显式认证 API 从 DB-A
+--            取回当前 (content_sha256, hmac)，作为参数 p_live_content_sha256 /
+--            p_live_hmac 传入 sp_verify_recovery_manifest（本文件 §5.2.1 已改为该形态）。
+--        (y) 受控 postgres_fdw 外部表【不作为】跨库机制：FDW 会引入隐式长连接、
+--            权限边界模糊、无法做请求级认证与重放防护，违反最小权限与审计独立性；
+--            DB-A 的 manifest 只经 Worker 显式认证通道取回，函数本身不发起任何跨库查询。
+--      ⇒ 跨库取数职责在【控制平面 Worker 外部进程】，函数本身不发起跨库查询。
+--   Q4 谁发起跨库请求？
+--      控制平面 Worker（编排器侧进程），不是 PG 触发器、不是 recovery_runs 上的
+--      任何自动动作。Worker 在恢复预检通过后、certify 之前显式调用核验。
+--   Q5 网络失败如何处理？
+--      Worker 取数失败 / DB-A 不可达 ⇒ 函数置 manifest_verified='pending_external' +
+--      manifest_verify_err='audit_store_unavailable'；该 run【不得】被 certify。
+--      绝不 fail-open（不把未知当成功）。
+--   Q6 外部审计库不可用时如何保证不误判成功？
+--      pending_external 是显式非终态；certify 闸门（sp_recovery_certify）要求
+--      manifest_verified='verified' 才放行；pending/unverifiable 一律拒绝。
+--   Q7 跨库不一致如何隔离？
+--      比对 DB-B 快照 (manifest_content_sha256, manifest_hmac) 与 DB-A 当前值：
+--      不一致 ⇒ manifest_verified='unverifiable' + manifest_verify_err='manifest_mismatch'；
+--      该 run 同样不得 certify，需人工/重备后重验。
+
+-- §8.2 核验协议字段（recovery_runs 行 + 传入参数，共 15 项；HMAC 与签名分列为两字段以落实四者区分）+ 四者严格区分
+--   manifest_id                uuid   【逻辑引用】跨库，不建物理 FK
+--   manifest_content_sha256    text   【①内容摘要】一致性锚点（独立核验用）
+--   manifest_hmac              text   【②HMAC】共享密钥消息认证（防篡改）
+--   manifest_signature         text   【③非对称签名】可选；由 evidence_signing_key
+--                                     独立公钥验签（比 HMAC 更强的来源认证）
+--   key_id                    text   【密钥标识】HMAC/签名所用密钥 id
+--   key_version               text   【密钥版本】HMAC/签名所用密钥版本（轮换用）
+--   algorithm                 text   【算法】如 HMAC-SHA256 / Ed25519
+--   backup_id                 uuid   关联 base backup
+--   recovery_run_id           uuid   本行主键（绑定）
+--   requested_target_lsn      pg_lsn 恢复的 T 参数
+--   actual_stop_lsn           pg_lsn 恢复后回填（未实测 NULL）
+--   timeline                  bigint 实际时间线
+--   verification_status        text  pending_external / verified / unverifiable
+--   verified_at               timestamptz
+--   verification_error         text  原因（audit_store_unavailable / manifest_mismatch）
+--
+--   【四者严格区分 · 不得混用】
+--   ① 内容摘要 (manifest_content_sha256)：证明『内容一致』，任何人可重算比对，不含密钥。
+--   ② HMAC (manifest_hmac)：证明『未被篡改 + 共享密钥持有方生成』，依赖 key_id/key_version。
+--   ③ 非对称签名 (manifest_signature)：证明『特定私钥持有方签发』，独立公钥可验，
+--      不依赖共享密钥；与 HMAC 是不同的认证机制，不得合并或相互替代。
+--   ④ 身份认证 (verified_by / verifier_org_unit)：证明『谁执行的核验』，是操作者身份，
+--      与上述 ①②③ 的内容/消息/来源认证正交，互不替代。
+--   ⇒ 四者在模型中为【互异机制】，且 key_id + key_version 完整（②/③ 必备），
+--      且字段绑定到 recovery_run_id。
+
+-- §8.3 跨库核验 13 场景推演（未知态一律保持 pending/unverifiable，不得自动转 success）
+--   场景 1  正常核验：DB-A 可达，摘要+hmac 一致 ⇒ verified
+--   场景 2  DB-A 不可达(网络) ⇒ pending_external（不 fail-open）
+--   场景 3  Worker 取数超时 ⇒ pending_external
+--   场景 4  摘要一致但 hmac 不一致 ⇒ unverifiable（防篡改失败）
+--   场景 5  hmac 一致但摘要不一致 ⇒ unverifiable
+--   场景 6  签名缺失而要求签名 ⇒ unverifiable
+--   场景 7  签名验签失败 ⇒ unverifiable
+--   场景 8  key_version 过期 ⇒ unverifiable（需轮换后重验）
+--   场景 9  manifest 在 DB-A 已被删除 ⇒ unverifiable（逻辑引用悬空）
+--   场景 10 快照与 DB-A 当前【高版本】不一致（旧快照不放行） ⇒ unverifiable
+--   场景 11 写入时 pending，DB-A 恢复后 Worker 重验一致 ⇒ verified
+--   场景 12 写入时 pending，DB-A 恢复后 Worker 重验仍不一致 ⇒ unverifiable
+--   场景 13 certify 闸门：manifest_verified≠'verified' 一律拒绝（不误判成功）
+--   ⇒ 除『场景1/11』外终态均非 success；未知态只进 pending/unverifiable。
+
+-- §8.4 完整执行流程（8 子点）+ TOCTOU 防范 + 不可变快照版本绑定
+--   【唯一组件】控制平面 Worker（编排器侧独立进程，非 PG 触发器、非 recovery_runs 自动动作）。
+--   流程 8 子点：
+--   ① 发起组件：恢复预检（sp_recovery_precheck）通过后、certify 之前，由 Worker 显式发起
+--      单次核验请求（携带 request_id + request_ts + protocol_version）。
+--   ② 读哪个库：Worker 只【读 DB-A】的 backup_manifests（恢复目标集群之内），
+--      不读 DB-B；DB-B 的 recovery_runs 由 sp_verify_recovery_manifest 在 DB-B 内操作。
+--   ③ 取可信数据：Worker 经显式认证 API（具名角色 shutree_audit_ro，mTLS/短期令牌）
+--      从 DB-A 取回 (content_sha256, hmac, manifest_signature, key_id, key_version, algorithm,
+--      timeline, backup_start_lsn, backup_stop_lsn)，并取回 DB-A 当前 manifest_version 标识。
+--   ④ 验摘要与认证：Worker 本地重算 content_sha256 比对；用 key_id/key_version 取对应
+--      密钥验 HMAC；若要求签名则独立公钥验 manifest_signature（HMAC ≠ 签名，两机制分离）；
+--      比对 DB-B 快照 (manifest_content_sha256, manifest_hmac) 与 DB-A 当前值。
+--   ⑤ 写结果：Worker 把 {live 值} 作为参数 p_live_content_sha256 / p_live_hmac 传入
+--      sp_verify_recovery_manifest（DB-B 内），函数据此置 verified / unverifiable /
+--      pending_external；任何结果写入均绑定 recovery_run_id + request_id（不可变）。
+--   ⑥ 处理 manifest 变化：若 DB-A 当前 manifest_version 高于 DB-B 快照版本（高版本不一致）
+--      ⇒ unverifiable（旧快照不放行）；若同版本但内容摘要/hmac 不一致 ⇒ unverifiable。
+--   ⑦ Worker 崩溃 / 超时 / 重放：请求带 request_id；Worker 崩溃则无副作用（未写结果），
+--      恢复后同 request_id 重试幂等（函数对 (run_id, request_id) 去重，已写则跳过）；
+--      跨进程超时由编排器另起 request_id 重发，旧 request_id 不残留半完成态。
+--   ⑧ 失败不误判：DB-A 不可达 / 取数失败 / 验签失败 / 密钥过期 ⇒ 一律 pending_external
+--      或 unverifiable；certify 闸门（sp_recovery_certify）要求 manifest_verified='verified'
+--      才放行；未知态永不转 success。
+--   【TOCTOU 特别审查】核验存在『取数时点 T1』与『写结果时点 T2』的时间窗：
+--      * 危害：攻击者在 T1 之后、T2 之前替换 DB-A manifest（版本/内容），使写入基于过期快照。
+--      * 防范：④⑤绑定【DB-A 当前 manifest_version 标识 + 取数时刻 request_ts】；
+--        写入时函数校验 (run_id, request_id) 绑定版本 == DB-A 当前版本（⑥不一致即 unverifiable）；
+--        即『版本标识 + 内容摘要 + 核验时间 + 绑定不可变快照』四元组锁定，T2 不允许落后于 T1 版本。
+--      * 不可变快照：recovery_runs 落库时复制 manifest 的 (content_sha256, hmac, version, ts)，
+--        是写入时刻的【不可变快照】；重验以最新 request_id 重新取数，不以旧快照覆盖新事实。
+
+-- §8.5 完整核验协议 · 四类机制严格区分 + 签名/MAC 字段覆盖 + 密钥生命周期 + 重放 + 审计
+--   【四类机制互异 · 不得混用，尤其不得把 HMAC 称非对称签名】
+--   ① 内容摘要 (content hash)   = manifest_content_sha256
+--        作用：证明『内容一致』；任何人可重算比对；不含任何密钥。
+--        由 §8.4③ Worker 取回、④ 本地重算比对。
+--   ② HMAC (消息认证码)         = manifest_hmac（算法见 algorithm，密钥见 key_id/key_version）
+--        作用：证明『未被篡改 + 持有共享密钥的一方生成』；依赖对称密钥。
+--        与 ③ 是不同的认证机制：HMAC 用共享密钥，签名用私钥；二者不可相互替代或合并表述。
+--   ③ 非对称数字签名             = manifest_signature（Ed25519 / RSA；独立公钥集验证）
+--        作用：证明『特定私钥持有方签发』；不依赖共享密钥；验签方只需公钥。
+--        明确标注：这是【非对称】机制；manifest_signature 字段与 manifest_hmac 字段
+--        在模型与代码中【分离存储、分离校验】；任何文档/代码不得把 manifest_hmac 称为签名。
+--   ④ 身份认证 (verifier identity)= verified_by + verifier_org_unit
+--        作用：证明『谁执行了这次核验』，是操作者身份，与上述 ①②③ 的内容/消息/来源
+--        认证【正交】，互不替代：即便 HMAC/签名验证通过，仍须记录并校验操作主体身份。
+--   【签名 / MAC 覆盖字段（至少 8 项，写入 MAC 与签名的 payload 中）】
+--        manifest_id, backup_id, recovery_run_id, requested_target_lsn（目标 LSN）,
+--        actual_stop_lsn（实际停止 LSN）, timeline, manifest_content_sha256（manifest 内容摘要）,
+--        protocol_version（协议版本）
+--        ⇒ MAC/HMAC 与签名必须对以上 8 字段的【规范化拼接】计算；缺一不可，防止局部篡改。
+--   【密钥生命周期】
+--        key_id        : 标识所用密钥（HMAC 与签名各自独立 key_id）。
+--        key_version   : 标识密钥版本；过期 key_version ⇒ unverifiable，需轮换后重验（§8.3 场景 8）。
+--        algorithm     : 显式算法（HMAC-SHA256 / Ed25519），不得留空或 'default'。
+--        密钥轮换      : 新 manifest 用新 key_version 签发；旧 key_version 在轮换宽窗内仍可被
+--                        历史密钥验证（historical_key_validation=true），超出宽窗即拒。
+--        历史密钥验证  : 验证方须保留密钥环并能用历史 key_version 验旧记录，防止合法旧记录被误判。
+--   【请求唯一标识 / 防重放 / 重试幂等】
+--        request_id    : 每次核验请求全局唯一（UUIDv7/雪花），绑定 (run_id, request_id) 去重。
+--        request_ts    : 取数时刻时间戳，参与快照版本绑定（见 §8.4 TOCTOU）。
+--        防重放        : 同 request_id 二次到达 ⇒ 幂等跳过（已写结果不重复处理）；
+--                        旧 request_id 超 TTL 不得被重放为有效请求。
+--        重试幂等      : Worker 崩溃重发须用【新】request_id；同 request_id 不残留半完成态。
+--   【审计记录】
+--        audited_by / audit_log_ref : 每次核验（含 pending/unverifiable）写入审计日志，
+--        记录 request_id, run_id, key_id, key_version, 验证主体, 结果, 原因, 时间；
+--        审计日志独立于 recovery_runs，且位于 DB-B（恢复目标集群之外）。
+
+-- §8.6 故障语义 12 项（未知态一律保持 pending / unverifiable，不得自动转 verified / success）
+--   故障 1  DB-A 不可用（实例宕/网络断）：Worker 取数失败 ⇒ pending_external（不 fail-open）。
+--   故障 2  DB-B 不可用（审计库宕）：sp_verify_recovery_manifest 无法写结果 ⇒ 请求挂起，
+--           编排器重试；该 run 保持原 pending 态，不误判。
+--   故障 3  Worker 崩溃（取数后/写结果前）：无副作用；恢复后新 request_id 重发，幂等。
+--   故障 4  网络超时（Worker↔DB-A）：归为 DB-A 不可用类 ⇒ pending_external。
+--   故障 5  manifest 在 DB-A 被删除（逻辑引用悬空）：⇒ unverifiable，需重备后重验。
+--   故障 6  manifest 在 DB-A 发生变化（版本/内容）：高版本不一致 ⇒ unverifiable（旧快照不放行）；
+--           同版本但摘要/hmac 不一致 ⇒ unverifiable（防篡改失败）。
+--   故障 7  签名缺失而策略要求签名：⇒ unverifiable（来源认证不可降级为仅 HMAC）。
+--   故障 8  HMAC 不一致（摘要一致）：⇒ unverifiable（消息认证失败）。
+--   故障 9  密钥过期（key_version 超出宽窗）：⇒ unverifiable，需轮换后重验。
+--   故障 10 旧请求重放（超 TTL 的 request_id 重发）：⇒ 重放防护丢弃，不写结果、不改状态。
+--   故障 11 重复请求（同 request_id 二次到达）：⇒ 幂等跳过，已写结果不重复处理。
+--   故障 12 核验中断恢复（函数执行中被 kill）：整事务回滚（见 §6 失败出口），该 run 回到
+--           原 pending 态；重发新 request_id 重验，无半完成态、无自动 success。
+
+-- ###########################################################################
+-- §9 TRG-01 并发正确性 · READ COMMITTED 可见性 + 串行化点（深化 §7）
+-- 目标：证明六通道推进在【READ COMMITTED】下即无竞态，不依赖 SERIALIZABLE；
+--       并明确『哪一行锁、哪条 SQL 获取、持锁到何时』。
+-- ###########################################################################
+
+-- §9.1 事务模型（重推导）
+--   (a) 触发：AFTER INSERT ON r2_evidence_verification（每条复核 INSERT 触发一次）。
+--   (b) 行锁：触发器内对【槽位行】r2_evidence_consumption(evidence_snapshot_id=v_sid)
+--            执行 SELECT ... FOR UPDATE（LO-1）；行锁由该复核事务持有，COMMIT/ROLLBACK 释放。
+--   (c) 槽位锁语义：同一 sid 的所有复核共用一行；FOR UPDATE 串行化对该 sid 的并发复核。
+--   (d) channel 唯一：r2_evidence_record.channel 上的唯一约束保证 6 个【不同】channel。
+--   (e) verifier/collector 独立：触发器内校验 verifier_id IS DISTINCT FROM collector_id
+--       且 org_unit 不同（三主体分离，见 §1）。
+--   (f) payload hash：verified_payload_sha256 必须等于 r.payload_sha256（一致性闸门）。
+--   (g) 状态转换：created→verified（幂等，允许 0 行）→consumable（COUNT=6 时原子）。
+--   (h) 提交边界：整条复核及其触发器在一个事务内提交；COMMIT 后状态对他事务可见。
+--   (i) 串行化点：【槽位行 FOR UPDATE】+【已提交状态】构成串行化点——并发复核按获锁
+--       顺序逐一进入临界区，COUNT(DISTINCT channel) 单调递增到 6，第 6 个获得者原子推进。
+
+-- §9.2 READ COMMITTED 逐语句快照推演
+--   隔离级 READ COMMITTED：每条语句看到【已提交】的数据快照；未提交变更对他人不可见。
+--   锁归属（明确）：
+--     * 被锁行：r2_evidence_consumption 中 evidence_snapshot_id = v_sid 的那【一行】。
+--     * 获取 SQL：触发器内 `SELECT c.state INTO v_state FROM ... c WHERE ... FOR UPDATE`（LO-1）。
+--     * 持锁到何时：从 FOR UPDATE 起，到该复核事务 COMMIT 或 ROLLBACK 止。
+--   可见性：获锁者读取的是【已提交】state；前序复核未提交前，后继者被行锁阻塞（不读脏）。
+--   是否依赖 SERIALIZABLE：否。READ COMMITTED + 行锁已足以保证：
+--     - 不会脏读（未提交的 verified 不可见）；
+--     - 不会丢失更新（FOR UPDATE 串行化 COUNT 计算与 UPDATE）；
+--     - COUNT(DISTINCT channel) 在临界区内单调递增，无竞态。
+
+-- §9.3 十并发时间线（每场景：SQL 顺序 / 锁 / 等待图 / 可见数据 / 提交或回滚 / 终态）
+--   时间线 1 串行六事务：T1..T6 各插 C1..C6；T1 created→verified(COMMIT)；T2..T6 见
+--     verified，COUNT 2..6；T6 COMMIT 后 consumable 可见。终态：consumable。
+--   时间线 2 并发六事务：均插未提交；仅一者先获槽位行锁，余者单边等待(T2→T1，无环)；
+--     获锁者 created→verified(COMMIT 释锁)；下一获锁者见 verified，COUNT=2；…第6者
+--     COUNT=6→consumable(COMMIT)。终态：consumable。
+--   时间线 3 同 channel 重复：T1 C1→verified；T2 再 C1；COUNT(DISTINCT) 仍=1→不推进。
+--     终态：verified（待补 6 异 channel）。
+--   时间线 4 同 channel 异 verifier：T1 C1 V1；T2 C1 V2；distinct channel 仍=1→不推进。
+--   时间线 5 第六通道精确触发：T1..T5 后 COUNT=5；T6 插 C6→COUNT=6→原子推进 consumable。
+--   时间线 6 验证失败：INSERT 但 result≠confirmed→触发器 RAISE→ROLLBACK；不计入 COUNT。
+--     终态：verified（该坏记录被拒）。
+--   时间线 7 verifier==collector：触发器 RAISE verification_rejected→ROLLBACK。终态：不变。
+--   时间线 8 摘要不一致：verified_payload_sha256≠r.payload_sha256→RAISE→ROLLBACK。
+--   时间线 9 同 sid 争槽位：两事务对【同一行】FOR UPDATE；等待图 T2→T1（单边，普通阻塞，
+--     非死锁）；获锁者完成 COMMIT，败者继续；均可最终 COMMIT。终态：consumable（第6者）。
+--   时间线 10 部分提交后崩溃：T1..T3 COMMIT（持久 3 条 confirmed）；T4..T6 崩溃未提交；
+--     恢复后 state=verified COUNT=3；新 T7..T9 插 C4..C6；T9 COUNT=6→consumable。终态：consumable。
+--   ⇒ 十时间线全部终态确定；consumable 在『6 异 channel + 全 confirmed + 三主体分离 +
+--     摘要一致』唯一点原子到达；任一前置不满足即 fail-closed（ROLLBACK 或停 verified 等补）。
+
+-- §9.4 TRG-01 SQL 级并发正确性证明（基于 §1 真实触发器 SQL，非仅文字推演）
+--   下列 SQL 取自 §1（注释态，均未执行）；逐条标注 READ COMMITTED 下的执行时点与快照。
+--   ---- SQL-A 取证据本体（触发器入口，普通 SELECT，非锁定）----
+--   SELECT r.evidence_snapshot_id, r.collector_id, r.collector_org_unit, r.payload_sha256
+--     INTO v_sid, v_collector, v_collector_org, v_hash
+--     FROM shutree_sec.r2_evidence_record r WHERE r.evidence_record_id = NEW.evidence_record_id;
+--   【快照】READ COMMITTED：读到该语句发起时已提交的 r 行；若 r 正被别事务更新则等其提交。
+--         不在触发器内持有 r 行锁，纯读；未提交变更对他人不可见（无脏读）。
+--   ---- SQL-B 三主体 + 摘要闸门（普通布尔判断，无写）----
+--   IF (NEW.verifier_id IS DISTINCT FROM v_collector) IS NOT TRUE
+--      OR (NEW.verifier_org_unit IS DISTINCT FROM v_collector_org) IS NOT TRUE
+--      OR (NEW.verification_result = 'confirmed') IS NOT TRUE
+--      OR (NEW.verified_payload_sha256 = v_hash) IS NOT TRUE THEN RAISE; END IF;
+--   【快照】v_collector / v_hash 为 SQL-A 已提交值；本判断在同一命令内，无新快照切换。
+--   ---- SQL-C 槽位行锁 LO-1（FOR UPDATE，临界区入口）----
+--   SELECT c.state INTO v_state
+--     FROM shutree_sec.r2_evidence_consumption c
+--    WHERE c.evidence_snapshot_id = v_sid FOR UPDATE;          -- LO-1
+--   【快照/锁】对该槽位行加行级写锁（FOR UPDATE）；若已被他事务持有则阻塞等待其
+--          COMMIT/ROLLBACK；获锁后读到的是【已提交】state（前序未提交复核被锁阻塞，不读脏）。
+--          锁由本复核事务持有，直到本事务 COMMIT 或 ROLLBACK 释放（held_until=commit_or_rollback）。
+--   ---- SQL-D created→verified（幂等，允许 0 行）----
+--   IF v_state = 'created' THEN
+--     UPDATE shutree_sec.r2_evidence_consumption
+--        SET state='verified', verified_at=now()
+--      WHERE evidence_snapshot_id=v_sid AND state='created';
+--     GET DIAGNOSTICS v_rows = ROW_COUNT; IF v_rows > 1 THEN RAISE 'cas_multi_rows'; END IF;
+--   END IF;
+--   【快照/锁】UPDATE 在 LO-1 锁保护下执行；WHERE state='created' 为 CAS 条件；
+--          GET DIAGNOSTICS 允许 0 行（首条之后重复复核 v_state 已非 created，不进此分支）。
+--   ---- SQL-E verified→consumable（COUNT(DISTINCT channel)=6 才推进）----
+--   ELSIF v_state = 'verified' THEN
+--     SELECT count(DISTINCT r.channel) INTO v_channels
+--       FROM shutree_sec.r2_evidence_record r
+--       JOIN shutree_sec.r2_evidence_verification v
+--         ON v.evidence_record_id = r.evidence_record_id
+--      WHERE r.evidence_snapshot_id = v_sid
+--        AND (v.verification_result = 'confirmed') IS TRUE
+--        AND (v.verified_payload_sha256 = r.payload_sha256) IS TRUE;
+--     IF v_channels = 6 THEN
+--       UPDATE shutree_sec.r2_evidence_consumption
+--          SET state='consumable' WHERE evidence_snapshot_id=v_sid AND state='verified';
+--       GET DIAGNOSTICS v_rows = ROW_COUNT; IF v_rows > 1 THEN RAISE 'cas_multi_rows'; END IF;
+--     END IF;
+--   END IF;
+--   【快照/锁】SQL-E 的 COUNT 在 LO-1 锁内读取已提交 r/v 行；因 LO-1 串行化，并发复核
+--          按获锁顺序逐一进入，COUNT(DISTINCT channel) 在临界区内单调递增到 6，无竞态；
+--          r2_evidence_record.channel 上的唯一约束保证 6 个是【不同】channel。
+
+--   §9.4.1 READ COMMITTED 逐条可见性（执行时点 / 快照 / 已提交 / 未提交 / 锁等待 / 是否触发器内 / 同命令快照限制）
+--    (a) SQL-A/B：触发器内普通 SELECT/布尔判断；看见发起时已提交数据；未提交对他人不可见。
+--    (b) SQL-C：FOR UPDATE 语句本身获取行锁；在获锁前若他事务持锁则【阻塞】，获锁后读取
+--        的是他事务【已提交】后的 state（不读脏）；本语句的快照在锁获取完成后确定。
+--    (c) SQL-D/E：在 LO-1 锁保护下执行；因锁串行化，SQL-D 的 UPDATE 与 SQL-E 的 COUNT
+--        看到的 state 与 r/v 行均为【一致已提交】视图，无丢失更新。
+--    (d) 是否在触发器/VOLATILE 函数内：是——整段在触发器函数内，随复核 INSERT 的同一事务
+--        提交；COMMIT 后 state 对他事务可见，未提交前他事务被 LO-1 阻塞而非读脏。
+--    (e) 同命令快照限制：READ COMMITTED 下每条语句各自取快照；但 LO-1 行锁使并发复核
+--        串行化，故『读 state → 判 COUNT → 写 state』虽跨多条语句，因锁保护而无竞态；
+--        不依赖 SERIALIZABLE 的全局快照。
+
+--   §9.4.2 锁与并发路径 10 项（覆盖 §7/§9.3 全部路径，逐条给出锁与终态）
+--    路径 1  六事务串行、各不同 channel：L1 获 LO-1→created→verified(COMMIT)→释锁；
+--            L2..L6 依次见 verified，COUNT 2..6；L6 COUNT=6→consumable(COMMIT)。终态 consumable。
+--    路径 2  六事务并发、各不同 channel：仅一者先获 LO-1，余者单边等待(T2→T1 无环)；
+--            获锁者 created→verified(COMMIT 释锁)；下一获锁者见 verified，COUNT=2；…第 6 者
+--            COUNT=6→consumable(COMMIT)。终态 consumable。
+--    路径 3  同 channel 重复复核：T1 C1→verified；T2 再 C1；COUNT(DISTINCT) 仍=1→不推进。
+--            终态 verified（待补 6 异 channel）。
+--    路径 4  同 channel 异 verifier：T1 C1 V1；T2 C1 V2；distinct channel 仍=1→不推进（去重主键=channel）。
+--    路径 5  第六通道精确触发：T1..T5 后 COUNT=5；T6 插 C6→COUNT=6→原子推进 consumable。
+--    路径 6  验证失败(result≠confirmed)：SQL-B 不满足→RAISE verification_rejected→ROLLBACK；不计入 COUNT。
+--    路径 7  verifier==collector（三主体独立性）：SQL-B 不满足→RAISE→ROLLBACK。终态 不变。
+--    路径 8  摘要不一致：NEW.verified_payload_sha256≠v_hash→SQL-B 不满足→RAISE→ROLLBACK。
+--    路径 9  同 sid 争同一槽位行：两事务对【同一行】FOR UPDATE；等待图 T2→T1（单边，普通阻塞非死锁）；
+--            获锁者完成 COMMIT，败者继续；均可最终 COMMIT。终态 consumable（第 6 者）。
+--    路径 10 部分提交后崩溃：T1..T3 COMMIT（持久 3 条 confirmed）；T4..T6 崩溃未提交；
+--            恢复后 state=verified COUNT=3；新 T7..T9 插 C4..C6；T9 COUNT=6→consumable。终态 consumable。
+
+--   §9.4.3 最终状态 7 不变量（若触发器 SQL 不能证明任一项，则须修正 §1 草稿与校验器）
+--    不变量 I1  同 sid 不重复消费：r2_evidence_consumption 以 evidence_snapshot_id 为主键，
+--              LO-1 行锁保证单一槽位行；created→verified→consumable 单向，无重复推进。
+--    不变量 I2  6 个 channel 真实不同：r2_evidence_record.channel 唯一约束 + COUNT(DISTINCT channel)=6
+--              双重保证；重复 channel 永不使 COUNT 达 6。
+--    不变量 I3  未确认不推进：SQL-B 要求 verification_result='confirmed'；非 confirmed 在 WHERE 排除，
+--              COUNT 不计入，state 不前进。
+--    不变量 I4  verifier-collector 隔离：SQL-B 要求 NEW.verifier_id IS DISTINCT FROM v_collector
+--              且 NEW.verifier_org_unit IS DISTINCT FROM v_collector_org（三主体分离，含 org_unit 独立性，
+--              第九轮修正：原 §9.4 SQL-B 漏校验 org_unit，已与 §1 TRG-01 描述对齐），
+--              复核者不得是被复核证据收集者，且不得与其同 org_unit。
+--    不变量 I5  payload hash 一致：SQL-B 要求 NEW.verified_payload_sha256 = r.payload_sha256
+--              （同一证据快照），摘要不一致即拒，防伪造。
+--    不变量 I6  consumable 仅原子产生：仅当 SQL-E 中 v_channels=6 时单条 UPDATE 置 consumable，
+--              GET DIAGNOSTICS 校验 ROW_COUNT=1（CAS），无部分写。
+--    不变量 I7  任意失败无部分成功：任一 RAISE（SQL-B/D/E）使整触发器随复核 INSERT 事务 ROLLBACK；
+--              COMMIT 边界保证『复核 INSERT + 状态推进』原子，无半完成状态。
+--    ⇒ 7 不变量均可由 §1 真实 SQL（SQL-A..E）+ LO-1 行锁 + channel 唯一约束直接证明，
+--      无需 SERIALIZABLE；若未来改动 §1 而破坏任一条，校验器 §9 断言须随之修正并新增变异样例。
+
+-- =============================================================================
+-- 结束。此文件与上一轮 SQL 草稿一样，从未被任何数据库执行。
+-- =============================================================================

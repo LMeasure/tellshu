@@ -1,0 +1,18 @@
+  [diag] 崩溃前 holder=c7c61b50-c4ca-461a-9501-4015b8057198 epoch=0 held=1793870675528 now=1793870676034
+PASS R8a 崩溃前已产生 1 条 settled 事件与 1 条凭证 — events=1 status=settled credentials=1
+  [diag] 崩溃瞬间原始: holder=c7c61b50-c4ca-461a-9501-4015b8057198 epoch=0 held=1793870675528 events=1 now=1793871037238
+  [diag] tabBeforeCrash=null tabAfter=368aabd6-be90-41a3-a351-a0dba521f8e7 same=false
+  [diag] holder=368aabd6-be90-41a3-a351-a0dba521f8e7 epoch=1 held=1793871037498 now=1793871038311
+  [diag] inputDisabled=false body="0/3\n第 1 个 · 最近新增\n连对 0/3\nn.\nn. 卷心菜\nc _ _ _ _ _ _\n· 7 个字母\n拼写\n跳过\n提交\n\n连对 3 次记为掌握，并计入生词本复习排程\n\n搜单词…\n首页\n发现\n复习\n我的\n本地数据"
+FAIL R8b 渲染进程崩溃后新标签显示冲突面板（旧锁未失效）
+FAIL R8c 崩溃后接管恢复：事件与凭证不丢、无 pending、输入恢复 — takeover=false events=1 pending=0
+PASS R9a 可获取浏览器进程 pid 以执行强制终止 — pid=79888
+PASS R9b SIGKILL 后可用同一 userDataDir 重新启动浏览器
+PASS R9c 进程 kill 后重启：事件/凭证完整、无 pending、恢复链可用 — events 2→2 pending=0 sessions=1
+PASS R11 移动视口触摸模拟：无横向溢出、输入框可交互、触摸事件可用 — scrollW=390 clientW=390 hasTouch=true
+
+────────────────────────────────────────────────────────────
+补充真机回归：5 通过 / 2 失败（7 项）
+N/A  IDB 事务逐拍 in-flight 中断时序（浏览器无法精确注入；自动化层已用 fake-indexeddb 事务 abort 覆盖）
+N/A  真实移动设备与软键盘（无 adb、无真机；R11 仅为视口/触摸模拟）
+N/A  跨内核矩阵 N/A：本机仅安装 Edge（Chromium 内核），无独立 Chrome / Firefox

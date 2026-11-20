@@ -68,7 +68,9 @@ export default function App() {
       <Route
         path="/learn"
         element={
-          <AppShell>
+          /* 单词学习页：底部不挂全局搜索（用户 2026-10-31 定稿），
+             只影响本页 —— /search 与其它页面的全局搜索照旧 */
+          <AppShell showGlobalSearch={false}>
             <LearningFlow />
           </AppShell>
         }

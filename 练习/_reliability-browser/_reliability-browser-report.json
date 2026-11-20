@@ -1,0 +1,87 @@
+{
+  "startedAt": "2026-11-05T12:21:58.813Z",
+  "base": "http://127.0.0.1:4174",
+  "profile": "isolated userDataDir",
+  "checks": [
+    {
+      "id": "R1",
+      "name": "单标签取锁成功后输入框启用",
+      "ok": true,
+      "detail": "inputEnabled=true"
+    },
+    {
+      "id": "R2",
+      "name": "5 个错误字母落 5 条独立错词事件且全部已结算",
+      "ok": true,
+      "detail": "events=5 wrong=5 settled=5"
+    },
+    {
+      "id": "R2b",
+      "name": "会话文档写入结算凭证与锁代次",
+      "ok": true,
+      "detail": "epoch=0 credentials=5"
+    },
+    {
+      "id": "R3",
+      "name": "第二标签页进入同一会话显示冲突面板（未静默并发）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R4",
+      "name": "用户显式接管后新标签可输入",
+      "ok": true,
+      "detail": "clicked=true"
+    },
+    {
+      "id": "R4b",
+      "name": "接管使 fencing token 原子 +1",
+      "ok": true,
+      "detail": "epoch=1"
+    },
+    {
+      "id": "R5",
+      "name": "旧标签继续写入被拒并进入只读冲突面板",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "R6",
+      "name": "刷新后恢复链完成、输入启用且无遗留 pending",
+      "ok": true,
+      "detail": "inputEnabled=true pending=0 sessions=1"
+    },
+    {
+      "id": "R7a",
+      "name": "触发 versionchange 且升级事务回滚（未产生新版本）",
+      "ok": true,
+      "detail": "result=error:AbortError"
+    },
+    {
+      "id": "R7b",
+      "name": "升级中断后重启：事件与会话不丢、无 pending、输入恢复",
+      "ok": true,
+      "detail": "inputEnabled=true events=5 pending=0 sessions=1"
+    }
+  ],
+  "notVerified": [
+    "in-flight 事务在 db.close() 瞬间中止的逐拍时序（浏览器无法精确注入）",
+    "升级中途 kill 浏览器进程后重启（需独立设备与进程控制）",
+    "Chromium / Firefox 跨内核矩阵",
+    "真实移动端设备与软键盘"
+  ],
+  "screenshots": [
+    "练习\\_reliability-browser\\r1-single-tab.png",
+    "练习\\_reliability-browser\\r3-conflict.png",
+    "练习\\_reliability-browser\\r4-takeover.png",
+    "练习\\_reliability-browser\\r5-stale-rejected.png",
+    "练习\\_reliability-browser\\r7-after-upgrade-interrupt.png"
+  ],
+  "observations": [
+    "tabA=000c7778-ae22-4373-8f19-38871143a243 tabB=90e1ec64-cbc7-40f6-b0d9-9c91b57a6d30 same=false",
+    "bundle=[\"http://127.0.0.1:4174/assets/index-B94WSCYO.js\",\"http://127.0.0.1:4174/registerSW.js\"] sw=true"
+  ],
+  "finishedAt": "2026-11-05T12:22:10.160Z",
+  "failures": 0,
+  "passed": 10
+}

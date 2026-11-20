@@ -1,14 +1,14 @@
 /**
- * 音视频转字幕单测（Phase 1）
+ * 音视频转字幕单测（Phase 1 + Phase 2 导出扩展）
  * ------------------------------------------------------------------
  * 覆盖：
- *   1. subtitle 转换：时间码（舍入 / 跨小时 / 边界）+ TXT/SRT/VTT 结构
+ *   1. subtitle 转换：时间码（舍入 / 跨小时 / 边界）+ TXT/SRT/VTT/CSV/JSON 结构
  *   2. validate：扩展名白名单（大小写）、体积边界（100MB 含等于）
  *   3. transcribe 编排：成功链路 / 提交即败 / 轮询失败 / 503 透出 /
  *      404 / 非 JSON 响应 / 轮询耗尽（fetch 打桩，intervalMs=0 不真睡）
  * 运行：npx tsx scripts/test_transcript.ts
  */
-import { formatTimecode, toSrt, toTxt, toVtt } from '../src/domain/transcript/subtitle'
+import { formatTimecode, toCsv, toJson, toSrt, toTxt, toVtt } from '../src/domain/transcript/subtitle'
 import { MAX_MEDIA_BYTES, validateMediaFile } from '../src/domain/transcript/validate'
 import { transcribeMedia } from '../src/domain/transcript/transcribe'
 import { ApiRequestError } from '../src/data/asrClient'
@@ -63,6 +63,91 @@ eq(
 eq(toSrt([]), '', 'SRT 空输入为空串')
 eq(toVtt(segs), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.500\nHello\n\n00:00:01.500 --> 00:00:03.250\nworld\n', 'VTT 带头与点号时间码')
 eq(toVtt([]), 'WEBVTT\n', 'VTT 空输入只保留头')
+
+console.log('subtitle: toCsv（UTF-8 BOM + CRLF + RFC4180 转义 + 边界）')
+const csvSegs = [
+  { start: 0, end: 1.5, text: '你好，世界' },
+  { start: 1.5, end: 3, text: 'He said "hello", then left.' },
+  { start: 3, end: 4, text: 'line one\nline two' },
+  { start: 4, end: 5, text: '   ' },
+]
+const csv = toCsv(csvSegs)
+assert(csv.startsWith('\ufeff'), 'CSV 首字节为 UTF-8 BOM（Excel 中文不乱码）')
+assert(csv.includes('\r\n'), 'CSV 行尾 CRLF（兼容常见表格软件）')
+assert(csv.split('\r\n')[0] === '\ufeffindex,start_time,end_time,text', 'CSV 首行为列名')
+assert(csv.includes('1,0.000,1.500,你好，世界'), 'CSV 中文与秒级 3 位小数时间')
+assert(csv.includes('2,1.500,3.000,"He said ""hello"", then left."'), 'CSV 逗号+双引号按 RFC4180 转义（引号翻倍）')
+assert(csv.includes('3,3.000,4.000,"line one\nline two"'), 'CSV 内含换行时整体加引号')
+assert(!csv.includes(',   \r\n') && !csv.includes(',   \n'), 'CSV 跳过空文本段')
+eq(toCsv([]), '\ufeffindex,start_time,end_time,text', 'CSV 空输入只有 BOM+列名')
+eq(
+  toCsv([{ start: Number.NaN, end: 2, text: 'x' }]).split('\r\n')[1],
+  '1,,2.000,x',
+  'CSV 非有限时间输出空串（不伪造时间）',
+)
+{
+  // 标准 CSV 解析器口径回读：行数 / 字段数 / 内容必须与输入一致
+  const parsed = csv
+    .replace(/^\ufeff/, '')
+    .split('\r\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const fields: string[] = []
+      let cur = ''
+      let inQuotes = false
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i]
+        if (inQuotes) {
+          if (ch === '"') {
+            if (line[i + 1] === '"') {
+              cur += '"'
+              i += 1
+            } else inQuotes = false
+          } else cur += ch
+        } else if (ch === '"') inQuotes = true
+        else if (ch === ',') {
+          fields.push(cur)
+          cur = ''
+        } else cur += ch
+      }
+      fields.push(cur)
+      return fields
+    })
+  eq(parsed.length, 4, 'CSV 回读：1 列名 + 3 数据行（空段已跳过）')
+  eq(parsed[1]?.[3], '你好，世界', 'CSV 回读：中文字段无损')
+  eq(parsed[2]?.[3], 'He said "hello", then left.', 'CSV 回读：引号字段还原')
+  eq(parsed[3]?.[3], 'line one\nline two', 'CSV 回读：换行字段还原')
+  eq(parsed[1]?.[0], '1', 'CSV 回读：index 列连续')
+}
+
+console.log('subtitle: toJson（完整结构化数据）')
+const json = toJson({
+  id: 'job-1',
+  language: 'en',
+  duration: 12.5,
+  fileName: 'a.mp3',
+  segments: segs,
+})
+const jsonParsed = JSON.parse(json) as {
+  id?: string
+  language: string
+  duration: number
+  fileName?: string
+  segments: { start: number; end: number; text: string }[]
+}
+eq(jsonParsed.id, 'job-1', 'JSON 带 id（有则输出）')
+eq(jsonParsed.language, 'en', 'JSON 带 language')
+eq(jsonParsed.duration, 12.5, 'JSON 带 duration')
+eq(jsonParsed.fileName, 'a.mp3', 'JSON 带 fileName（有则输出）')
+eq(jsonParsed.segments.length, 2, 'JSON 带全部 segments')
+eq(jsonParsed.segments[1]?.start, 1.5, 'JSON 保留每段 start')
+eq(jsonParsed.segments[1]?.end, 3.25, 'JSON 保留每段 end')
+eq(jsonParsed.segments[1]?.text, '  world  ', 'JSON 文本原样（不 Trim，保真）')
+{
+  const noMeta = JSON.parse(toJson({ language: 'zh', duration: 0, segments: [] })) as Record<string, unknown>
+  assert(!('id' in noMeta), 'JSON 无 id 时不编造')
+  assert(!('fileName' in noMeta), 'JSON 无 fileName 时不编造')
+}
 
 /* ------------------------------------------------------------------ */
 /* 2. validate                                                         */

@@ -1,0 +1,418 @@
+{
+  "startedAt": "2026-10-21T16:59:26.539Z",
+  "base": "http://127.0.0.1:4174",
+  "edge": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "edgeVersion": "Edg/155.0.4283.62",
+  "checks": [
+    {
+      "id": "S0",
+      "name": "种子数据写入 IndexedDB（app 已把库建到 v10）",
+      "ok": true,
+      "detail": "6 词"
+    },
+    {
+      "id": "S1.1",
+      "name": "375px 下入口卡片与按钮可见",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S1.2",
+      "name": "375px 下 /review 无横向溢出",
+      "ok": true,
+      "detail": "scrollW=375 clientW=375"
+    },
+    {
+      "id": "S2.1",
+      "name": "练习页渲染出输入框",
+      "ok": true,
+      "detail": "当前词定义=\"n. 责任；职责；义务\""
+    },
+    {
+      "id": "S2.2",
+      "name": "提交按钮存在",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S2.3",
+      "name": "只显示长度提示（不泄露答案）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S2.4",
+      "name": "页面文本不含完整答案",
+      "ok": true,
+      "detail": "答案=\"responsibility\""
+    },
+    {
+      "id": "S2.5",
+      "name": "375px 下练习页无横向溢出",
+      "ok": true,
+      "detail": "scrollW=375 clientW=375"
+    },
+    {
+      "id": "S2.6",
+      "name": "本功能控件触摸目标均 ≥44px",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S2.7",
+      "name": "本功能纯图标按钮均带 aria-label + title",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S4b.1",
+      "name": "当前词确为较长单词",
+      "ok": true,
+      "detail": "\"responsibility\" 14 字母"
+    },
+    {
+      "id": "S4b.2",
+      "name": "长释义完整渲染（含分号分隔的多义项）",
+      "ok": true,
+      "detail": "n. 责任；职责；义务"
+    },
+    {
+      "id": "S4b.3",
+      "name": "较长单词（14 字母）提示不横向溢出",
+      "ok": true,
+      "detail": "scrollW=375 clientW=375"
+    },
+    {
+      "id": "S4b.4",
+      "name": "长单词提示文本完整渲染",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S3.1",
+      "name": "视口高度收缩后输入框仍在可视区内",
+      "ok": true,
+      "detail": "视口 375x420"
+    },
+    {
+      "id": "S3.2",
+      "name": "提交按钮仍在可视区内（可操作）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S3.3",
+      "name": "高度收缩后仍无横向溢出",
+      "ok": true,
+      "detail": "scrollW=375 clientW=375"
+    },
+    {
+      "id": "S4.1",
+      "name": "答对显示正向反馈",
+      "ok": true,
+      "detail": "拼对！"
+    },
+    {
+      "id": "S4.2",
+      "name": "答错显示负向反馈",
+      "ok": true,
+      "detail": "不对，再试试"
+    },
+    {
+      "id": "S4.3",
+      "name": "空答案不增加尝试次数",
+      "ok": true,
+      "detail": "2 → 2"
+    },
+    {
+      "id": "S4.4",
+      "name": "输入为空时提交按钮禁用（前置拦截）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S5.1",
+      "name": "暂停后库里为 PAUSED",
+      "ok": true,
+      "detail": "PAUSED"
+    },
+    {
+      "id": "S5.2",
+      "name": "暂停态文案可见",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S5.3",
+      "name": "刷新后仍识别为暂停态",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S5.4",
+      "name": "刷新后库里仍是 PAUSED",
+      "ok": true,
+      "detail": "PAUSED"
+    },
+    {
+      "id": "S5.5",
+      "name": "继续后回到练习态（输入框可用）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S5.6",
+      "name": "继续后库里为 IN_PROGRESS",
+      "ok": true,
+      "detail": "IN_PROGRESS"
+    },
+    {
+      "id": "S5.7",
+      "name": "放弃后库里为 ABANDONED",
+      "ok": true,
+      "detail": "ABANDONED"
+    },
+    {
+      "id": "S5.8",
+      "name": "放弃后回到 /review",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/review"
+    },
+    {
+      "id": "S5.9",
+      "name": "再进默写页不会把已放弃会话救回来",
+      "ok": true,
+      "detail": "库内：IN_PROGRESS"
+    },
+    {
+      "id": "S6.0",
+      "name": "本轮实际取到 2 个词（batchSize=2 生效）",
+      "ok": true,
+      "detail": "实际 2 词"
+    },
+    {
+      "id": "S6.1",
+      "name": "完成后自动跳到 /spelling-result",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/spelling-result?id=ccab4bbd-3bc5-474b-b8cc-860a86dd848b"
+    },
+    {
+      "id": "S6.2",
+      "name": "结果页标题存在",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S6.3",
+      "name": "结果页展示完成数",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S6.4",
+      "name": "结果页展示逐词明细",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S6.5",
+      "name": "结果页展示正确率",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S6.6",
+      "name": "库里会话为 SESSION_COMPLETED",
+      "ok": true,
+      "detail": "SESSION_COMPLETED"
+    },
+    {
+      "id": "S6.7",
+      "name": "375px 下结果页无横向溢出",
+      "ok": true,
+      "detail": "scrollW=375 clientW=375"
+    },
+    {
+      "id": "S6.8",
+      "name": "刷新结果页后仍能读到同一会话",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S6.9",
+      "name": "刷新前后指标数字完全一致（完成/跳过/失效/提交/答对/正确率）",
+      "ok": true,
+      "detail": "完成=2 跳过=0 失效=0 提交次数=6 答对=6 正确率=100% → 完成=2 跳过=0 失效=0 提交次数=6 答对=6 正确率=100%"
+    },
+    {
+      "id": "S6.10",
+      "name": "结果页提供返回入口且可用",
+      "ok": true,
+      "detail": "http://127.0.0.1:4174/review"
+    },
+    {
+      "id": "S6.11",
+      "name": "结果页遇到不存在的会话给出提示而非伪造",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S6.12",
+      "name": "不存在时提供返回入口",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S7.1",
+      "name": "1280px 下 /review 无横向溢出",
+      "ok": true,
+      "detail": "scrollW=1280 clientW=1280"
+    },
+    {
+      "id": "S7.2",
+      "name": "1280px 下练习页无横向溢出",
+      "ok": true,
+      "detail": "scrollW=1280 clientW=1280"
+    },
+    {
+      "id": "S7.3",
+      "name": "宽屏下内容宽度受 max-w-app 约束",
+      "ok": true,
+      "detail": "最宽卡片 343px"
+    },
+    {
+      "id": "S8.0a",
+      "name": "无冲突时正常进入练习（未误报冲突）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S8.1",
+      "name": "第二个标签页顺序打开时不新建第二份会话",
+      "ok": true,
+      "detail": "库内 1 份"
+    },
+    {
+      "id": "S8.2",
+      "name": "两个标签页看到的是同一会话 id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S8.3",
+      "name": "A 提交后 B 刷新读到同一进度（无第二份副本）",
+      "ok": true,
+      "detail": "position 0 → 0"
+    },
+    {
+      "id": "S8.4",
+      "name": "A 的作答只被计一次（没有重复计数）",
+      "ok": true,
+      "detail": "total_attempts=1"
+    },
+    {
+      "id": "S8.5",
+      "name": "冲突提示出现",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S8.6",
+      "name": "提示明说不保证互斥",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S8.7",
+      "name": "列出两份会话供选择",
+      "ok": true,
+      "detail": "实际 2 项"
+    },
+    {
+      "id": "S8.8",
+      "name": "不自动替用户裁决（没有输入框）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S8.9",
+      "name": "裁决后只剩一份 IN_PROGRESS",
+      "ok": true,
+      "detail": "IN_PROGRESS 1 份"
+    },
+    {
+      "id": "S8.10",
+      "name": "被放弃的那份确实是 ABANDONED",
+      "ok": true,
+      "detail": "ABANDONED 1 份"
+    },
+    {
+      "id": "S8.11",
+      "name": "保留的正是选中的那份",
+      "ok": true,
+      "detail": "保留=8675bc1a-ef2b-4cc8-bd97-6f28f4ac6170 选中=8675bc1a-ef2b-4cc8-bd97-6f28f4ac6170"
+    },
+    {
+      "id": "S8.12",
+      "name": "另一个标签页刷新后仍是唯一一份活跃会话（未被冲成两份）",
+      "ok": true,
+      "detail": "IN_PROGRESS 1 份"
+    },
+    {
+      "id": "S8.13",
+      "name": "另一个标签页也没有把被放弃的会话复活",
+      "ok": true,
+      "detail": "conflict-second=ABANDONED"
+    },
+    {
+      "id": "S9.1",
+      "name": "刷新后没有新开第二份会话",
+      "ok": true,
+      "detail": "库内 1 份"
+    },
+    {
+      "id": "S9.2",
+      "name": "刷新后恢复同一会话 id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "S9.3",
+      "name": "刷新后出题位置保持",
+      "ok": true,
+      "detail": "0 → 0"
+    },
+    {
+      "id": "S9.4",
+      "name": "刷新后连对进度保留",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "screenshots": [
+    "练习\\_e-browser\\s1-review-375.png",
+    "练习\\_e-browser\\s2-spelling-375.png",
+    "练习\\_e-browser\\s4b-long-word.png",
+    "练习\\_e-browser\\s3-softkeyboard-sim.png",
+    "练习\\_e-browser\\s4-feedback-correct.png",
+    "练习\\_e-browser\\s5-paused.png",
+    "练习\\_e-browser\\s5-resumed.png",
+    "练习\\_e-browser\\s6-result-375.png",
+    "练习\\_e-browser\\s6-back-to-review.png",
+    "练习\\_e-browser\\s6-missing-session.png",
+    "练习\\_e-browser\\s7-review-1280.png",
+    "练习\\_e-browser\\s7-spelling-1280.png",
+    "练习\\_e-browser\\s8-conflict.png",
+    "练习\\_e-browser\\s8-conflict-resolved.png",
+    "练习\\_e-browser\\s9-refresh.png"
+  ],
+  "notVerified": [
+    "真机软键盘弹出（需实体设备调起输入法；本环境以视口高度收缩近似）"
+  ],
+  "observations": [
+    "既有/旁人组件存在小触摸目标（非本功能，未改）：本地数据 88x24 —— 来源 AppShell → SyncIndicator",
+    "并发创建真竞态**已复现**（1/6 次出现两份会话）：两个标签页同时导航时各写了一份 —— 这是「写前检查 + 写后复核」挡不住的窗口（TableService 无事务 API），与方案 §并发边界的描述一致"
+  ],
+  "finishedAt": "2026-10-21T17:00:50.076Z",
+  "failures": 0
+}

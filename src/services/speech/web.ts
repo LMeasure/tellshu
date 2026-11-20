@@ -56,6 +56,56 @@ function getRecognitionCtor(): RecognitionCtor | null {
 let cachedVoices: SpeechSynthesisVoice[] = []
 let voicesHooked = false
 
+/* ------------------------------------------------------------------
+ * 错误提示音（单词默写 V2）
+ * ------------------------------------------------------------------
+ * 用 Web Audio 生成短促双音，不依赖音频文件（离线可用、不占预缓存）。
+ * AudioContext 是平台 API，按红线只在本文件出现；页面/领域层一律通过
+ * SpeechService.playErrorTone() 调用，不直接碰 AudioContext。
+ *
+ * 平台坑：浏览器自动播放策略要求用户手势后才能 resume()。逐字母输入天然
+ * 发生在按键之后，故这里尝试 resume()；失败只返回 false，绝不抛错打断判错。
+ * 每次新建 context 会导致频繁按键时资源累积，因此复用单例并只做短音。
+ */
+let toneCtx: AudioContext | null = null
+
+function playErrorTone(): boolean {
+  const w = win() as (Window & { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }) | null
+  if (!w) return false
+  const Ctor = w.AudioContext ?? w.webkitAudioContext
+  if (!Ctor) return false
+  try {
+    if (!toneCtx) toneCtx = new Ctor()
+    const ctx = toneCtx
+    if (ctx.state === 'suspended') void ctx.resume().catch(() => {})
+    const now = ctx.currentTime
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16)
+    gain.connect(ctx.destination)
+    // 短促下行双音：比单调「嘀」更容易被识别为「错」，且不刺耳
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(440, now)
+    osc.frequency.setValueAtTime(330, now + 0.07)
+    osc.connect(gain)
+    osc.start(now)
+    osc.stop(now + 0.17)
+    osc.onended = () => {
+      try {
+        osc.disconnect()
+        gain.disconnect()
+      } catch {
+        /* 忽略 */
+      }
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** 语音列表异步加载：首次调用为空时必须挂一次监听，否则语音永远选不到 */
 function refreshVoices(): SpeechSynthesisVoice[] {
   const w = win()
@@ -226,6 +276,8 @@ export const webSpeechService: SpeechService = {
       }
     })
   },
+
+  playErrorTone,
 
   cancel(): void {
     const w = win()

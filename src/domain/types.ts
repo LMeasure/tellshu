@@ -15,8 +15,9 @@
 import type { BookChapter } from '../lib/epub'
 import type { MaskMode, MaskTarget } from '../lib/masking'
 import type { DiagnoseLevel } from '../lib/diagnostic'
-import type { StudyNoteRecord, TranscriptRecord } from './transcript/types'
+import type { StudyNoteRecord, TranscriptRecord, TranscriptSegment } from './transcript/types'
 import type { SpellingSession } from './spelling'
+import type { WordLearningSession } from './wordLearning'
 
 /** 诊断等级沿用 lib/diagnostic 的定义，避免两处各写一份后漂移 */
 export type { DiagnoseLevel }
@@ -64,7 +65,7 @@ export interface ReviewLog {
   deleted_at?: number | null
 }
 
-export type ReadingType = 'article' | 'book' | 'audio'
+export type ReadingType = 'article' | 'book' | 'audio' | 'transcript'
 
 /** 书签：页级标记 + 挂靠段落（目录里列出并可跳转） */
 export interface ReadingBookmark {
@@ -139,6 +140,11 @@ export interface ReadingDoc {
   media_type?: string
   /** 扩展名，如 mp3 */
   ext?: string
+  /**
+   * 音视频字幕转写的分段时间戳（type==='transcript' 时存在）。
+   * 非索引字段，随对象整体存储，不需 Dexie 升版本。
+   */
+  segments?: TranscriptSegment[]
 }
 
 /** 学习时长按日累计（计入个人中心可视化，见 06 §7.3） */
@@ -362,6 +368,57 @@ export interface SyncMetaRow {
 }
 
 /* ------------------------------------------------------------------
+ * 错词事件（单词默写 V2，Dexie v14 新增表；领域写入逻辑不在本文件）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 错词事件类型。
+ * ⚠️ 实施草案：最终取值待架构负责人书面确认（见《Dexie版本协调-实施授权清单.md》Q2 待合并复核、
+ * 《Dexie版本协调-G9-D9-结论.md》§九 item 3）。当前按「非成功终态即错误事件」取三类。
+ */
+export type SpellingErrorEventKind = 'wrong' | 'skip' | 'unavailable'
+
+/**
+ * 事件结算状态三态（对应《Dexie版本协调-G9-D9-结论.md》§四「重放依据」：
+ * 以 event_id 主键 + 会话高水位 + 事件行 status 三态判定哪些事件未结算）。
+ * ⚠️ 同上，实施草案，待合并复核。
+ */
+export type SpellingErrorEventStatus = 'pending' | 'settled' | 'aborted' | 'settled_skipped'
+
+/**
+ * 一次拼写错误/未完成的持久化事件（主键 event_id，幂等回放依据）。
+ *
+ * ⚠️ 以下 tab_id / lock_epoch / settled_at / settle_reason 均为**行内字段**：
+ * Dexie `stores()` 只声明索引，新增行内字段不改 schema、不触发版本号升级。
+ * 结算状态的权威依据是会话文档里的 `applied_error_event_ids` 凭证，
+ * `status` 只是非权威展示态（T-C），落后或超前都不影响幂等。
+ */
+export interface SpellingErrorEvent {
+  /** 主键；写入方保证唯一，drain 重放以 event_id 去重 */
+  event_id: string
+  /** 归属用户；默认 'guest'（v13 约定） */
+  owner: string
+  /** 关联词条 */
+  word_id: string
+  /** 关联默写会话 id */
+  session_id: string
+  /** 事件类型（草案） */
+  kind: SpellingErrorEventKind
+  /** 发生时间（epoch ms） */
+  occurred_at: number
+  /** 结算状态（草案）；'settled_skipped' = 旧代次 stale 事件，写凭证但不归零 */
+  status: SpellingErrorEventStatus
+  /** 写入时的持锁标签（C09/T29 fencing 追溯用） */
+  tab_id?: string
+  /** 写入时冻结的锁代次；与会话当前 lock_epoch 不符即判 stale */
+  lock_epoch?: number
+  /** 结算完成时间（展示用） */
+  settled_at?: number
+  /** 结算原因码（如 'stale_epoch'），不记录隐私数据 */
+  settle_reason?: string
+}
+
+/* ------------------------------------------------------------------
  * 存储表映射：storage.table('vocab') 的类型由此决定，写错表名/类型会编译报错
  * ------------------------------------------------------------------ */
 
@@ -390,6 +447,10 @@ export interface StorageSchema {
   studyNotes: StudyNoteRecord
   // ↓ v10 新增：单词默写会话（单文档，queue 内嵌；方案 V3.2 §5.1）
   spellingSessions: SpellingSession
+  // ↓ v11 新增：单词学习进度（单文档，完整队列 + 位置 + 已完成；2026-10-31 修复进度重置）
+  wordLearningSessions: WordLearningSession
+  // ↓ v14 新增：单词默写 V2 错词事件（主键 event_id，纯新增表；kind/status 为实施草案待复核）
+  spellingErrorEvents: SpellingErrorEvent
 }
 
 export type TableName = keyof StorageSchema
@@ -415,6 +476,8 @@ export interface PrimaryKeyMap {
   transcripts: string
   studyNotes: string
   spellingSessions: string
+  wordLearningSessions: string
+  spellingErrorEvents: string
 }
 
 export type PrimaryKey<K extends TableName> = PrimaryKeyMap[K]

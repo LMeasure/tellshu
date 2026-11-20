@@ -11,12 +11,13 @@
  *   · 轮询超时      —— 明确告知「结果不保留」。
  *
  * Phase 2 M1 起：`transcribeAndSave` 在成功后把字幕落前端 Dexie
- * （用户拍板：transcript 是用户资产起点，永久留存）。落库失败不阻断
- * 结果展示——持久化是增强，不是转写成功的前提。
+ * （用户拍板：transcript 是用户资产起点，永久留存），并自动登记为
+ * 阅读器可读资料（幂等键 t_<jobId>，见 store.ensureTranscriptReading）。
+ * 两步失败均不阻断结果展示——持久化是增强，不是转写成功的前提。
  */
 
 import { ApiRequestError, fetchAsrJob, submitAsrJob } from '@/data/asrClient'
-import { saveTranscriptRecord } from './store'
+import { ensureTranscriptReading, saveTranscriptRecord } from './store'
 import type { AsrJobResponse, AsrJobStatus, Transcript } from './types'
 
 export const ASR_POLL_INTERVAL_MS = 3_000
@@ -44,12 +45,17 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** 服务端 jobId + 归一化结果 -> 领域 Transcript。 */
-function toTranscript(jobId: string, transcript: NonNullable<AsrJobResponse['transcript']>): Transcript {
+function toTranscript(
+  jobId: string,
+  transcript: NonNullable<AsrJobResponse['transcript']>,
+  fileName?: string,
+): Transcript {
   return {
     id: jobId,
     language: transcript.language,
     duration: transcript.duration,
     segments: transcript.segments,
+    fileName,
   }
 }
 
@@ -78,7 +84,7 @@ export async function transcribeMedia(
       if (job.transcript === null) {
         throw new ApiRequestError(0, '任务完成但服务端未返回转录结果')
       }
-      return toTranscript(submitted.jobId, job.transcript)
+      return toTranscript(submitted.jobId, job.transcript, input.fileName)
     }
     if (job.status === 'failed') {
       throw new ApiRequestError(0, job.error?.message ?? '转写失败，请稍后重试')
@@ -89,8 +95,10 @@ export async function transcribeMedia(
 }
 
 /**
- * 转写并在成功后落库（Phase 2 M1 起的默认入口）。
+ * 转写并在成功后落库 + 自动登记阅读器资料（Phase 2 M1 起的默认入口）。
  * 落库失败只记告警：会话内结果已到手，展示 / 导出不依赖持久化成功。
+ * 阅读器登记同样只记告警：复用 learning.saveReading 领域入口（幂等键
+ * t_<jobId>），失败不影响转写结果本身——持久化是增强，不是前提。
  */
 export async function transcribeAndSave(
   input: { file: Blob; fileName: string; language?: string },
@@ -102,6 +110,11 @@ export async function transcribeAndSave(
     await saveTranscriptRecord(result)
   } catch (e) {
     console.warn('[transcript] 字幕落库失败（结果仍可查看 / 导出）：', e)
+  }
+  try {
+    await ensureTranscriptReading(result, input.fileName)
+  } catch (e) {
+    console.warn('[transcript] 阅读器资料登记失败（结果仍可查看 / 导出）：', e)
   }
   return result
 }

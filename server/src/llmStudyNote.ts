@@ -12,6 +12,13 @@
 //     （词是资产，pos 丢了只是前端查不到本地词库，标「AI 生成」即可，不丢词）；
 //   - LLM 少给/给错的内容：逐项守卫静默丢弃，绝不编造补齐。
 // 校验兜底：四要素全空视为失败（LlmError upstream），前端提示重试。
+//
+// 语言自适应（决策 2026-10-22 用户确认，中英双译）：
+//   transcript.language 以 zh 开头（中文素材）时：
+//     · bilingual_notes 方向反转——zh 填字幕里的中文原句，en 填该句英译
+//       （与英文素材时 en 原句 + zh 翻译对称，存储契约 en/zh 语义不变）；
+//     · vocabulary 恒为空数组——中文素材不生成英文词汇（前端词汇区直接省略）。
+//   其余语言（en / und / 其它）沿用原英文中心 prompt，行为零变化。
 // =============================================================================
 
 import type { AiConfig } from './config';
@@ -27,10 +34,11 @@ import {
 } from './types';
 
 // -----------------------------------------------------------------------------
-// Prompt
+// Prompt（按字幕语种二选一；契约四要素不变）
 // -----------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `你是一位英语学习材料编辑。用户会给你一份带时间戳的视频字幕，请输出一份结构化学习稿，严格按以下 JSON 格式返回（不要输出任何其他文字，不要用 markdown 代码块包裹）：
+/** 英文素材（默认）：en 填英文原句，zh 填中文翻译/语言点解释。 */
+const SYSTEM_PROMPT_EN = `你是一位英语学习材料编辑。用户会给你一份带时间戳的视频字幕，请输出一份结构化学习稿，严格按以下 JSON 格式返回（不要输出任何其他文字，不要用 markdown 代码块包裹）：
 
 {
   "summary": "用 2-4 句中文概括视频内容",
@@ -49,6 +57,34 @@ const SYSTEM_PROMPT = `你是一位英语学习材料编辑。用户会给你一
 3. vocabulary 选 5-15 个最有学习价值的词或短语，宁缺毋滥；gloss 必须结合字幕语境，不要照搬通用词典义。
 4. key_points 列 3-8 条，聚焦语言点（语法、句型、地道表达）与内容要点。
 5. 四个字段必须全部存在；某类没有内容时输出空数组 []，不要省略字段。`;
+
+/**
+ * 中文素材（决策 2026-10-22）：双语解释中英双译——zh 填字幕里的中文原句，
+ * en 填该句的英文翻译；vocabulary 恒为空数组（中文素材不生成英文词汇）。
+ * summary / key_points 口径与英文素材一致（中文输出）。
+ */
+const SYSTEM_PROMPT_ZH = `你是一位中文学习材料编辑。用户会给你一份带时间戳的中文视频字幕，请输出一份结构化学习稿，严格按以下 JSON 格式返回（不要输出任何其他文字，不要用 markdown 代码块包裹）：
+
+{
+  "summary": "用 2-4 句中文概括视频内容",
+  "bilingual_notes": [
+    { "zh": "字幕中出现过的中文原句（可截取完整分句）", "en": "该句的英文翻译" }
+  ],
+  "key_points": ["用中文写的知识点或要点，每条一句话"],
+  "vocabulary": []
+}
+
+要求：
+1. 只输出 JSON 对象本身，不要输出任何解释文字。
+2. bilingual_notes 的 zh 必须是字幕里出现过的中文原句，不要自己编造句；选 3-8 个最有学习价值的句子，en 给出准确、自然的英文翻译。
+3. vocabulary 恒为空数组 []：这是中文素材的学习稿，不生成英文词条，不要输出任何词汇。
+4. key_points 列 3-8 条，聚焦内容要点与中文语言点（修辞、典故、地道表达）。
+5. 四个字段必须全部存在；某类没有内容时输出空数组 []，不要省略字段。`;
+
+/** 字幕语种是否中文素材（zh / zh-CN / zh-Hans…；大小写与分隔符宽容）。 */
+export function isChineseSource(language: string): boolean {
+  return language.trim().toLowerCase().replace('_', '-').startsWith('zh');
+}
 
 /** 秒 -> [mm:ss]（>= 1h 用 h:mm:ss）。 */
 function formatTimestamp(seconds: number): string {
@@ -185,6 +221,20 @@ export interface RunStudyNoteOptions {
 }
 
 /**
+ * 按字幕语种组装 messages：中文素材走中译英 prompt（词汇恒空），
+ * 其余走英文中心 prompt。导出供单测直接断言两种分支。
+ */
+export function buildStudyNoteMessages(
+  request: StudyNoteRequest,
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const system = isChineseSource(request.transcript.language) ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN;
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: buildTranscriptUserPrompt(request.transcript) },
+  ];
+}
+
+/**
  * 端到端生成学习稿：prompt -> 流式调用 -> 全文 JSON -> 契约校验。
  * 段数上限、请求体形状由路由层负责（400）；这里失败一律 LlmError。
  */
@@ -192,10 +242,7 @@ export async function runStudyNoteGeneration(
   request: StudyNoteRequest,
   options: RunStudyNoteOptions,
 ): Promise<StudyNotePayload> {
-  const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
-    { role: 'user' as const, content: buildTranscriptUserPrompt(request.transcript) },
-  ];
+  const messages = buildStudyNoteMessages(request);
 
   const fullText = await streamLLM(messages, (token, full) => {
     options.onToken?.(token, full);

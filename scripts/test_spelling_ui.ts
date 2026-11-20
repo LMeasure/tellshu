@@ -176,27 +176,35 @@ async function main(): Promise<void> {
     root = null
   }
 
-  /** 在输入框里打字并回车提交 */
-  async function typeAndSubmit(view: Awaited<ReturnType<typeof renderAt>>, value: string) {
-    const input = view.q('#spelling-input') as HTMLInputElement | null
-    if (!input) throw new Error('找不到 #spelling-input')
+  /**
+   * V2 逐字母输入：把整词拆成单字符，每个字符触发一次 input 事件。
+   * 页面用「受控 value='' + 串行队列」消费快速连打，所以可以在一个 act 里
+   * 连续 dispatch 所有字符（ref 入队是同步的，不会丢），再等队列排空。
+   * V2 无「回车提交 / 提交按钮」，故不再发送 Enter、不再点按钮。
+   */
+  async function typeWord(view: Awaited<ReturnType<typeof renderAt>>, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      dom.window.HTMLInputElement.prototype,
+      'value',
+    )!.set!
     await act(async () => {
-      // 受控输入：走 React 的原生事件，让 onChange 真的跑
-      const setter = Object.getOwnPropertyDescriptor(
-        dom.window.HTMLInputElement.prototype,
-        'value',
-      )!.set!
-      setter.call(input, value)
-      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+      for (const ch of value) {
+        const input = view.q('#spelling-input') as HTMLInputElement | null
+        if (!input) break
+        setter.call(input, ch)
+        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+      }
     })
+    // 等待逐字母串行 atomicBatch 队列消费完毕（每个字母一次跨表事务）
     await act(async () => {
-      input.dispatchEvent(
-        new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
-      )
+      await sleep(400)
     })
-    await act(async () => {
-      await sleep(30)
-    })
+  }
+
+  /** 输入一个必定错误的字母（与首字母不同） */
+  async function typeWrongLetter(view: Awaited<ReturnType<typeof renderAt>>, answer: string) {
+    const first = (answer[0] ?? 'a').toLowerCase()
+    await typeWord(view, first === 'z' ? 'q' : 'z')
   }
 
   /* ================================================================
@@ -273,40 +281,48 @@ async function main(): Promise<void> {
       return s.queue.find((w) => w.position === s.current_position)!.word
     }
 
-    // 3.1 答错：显示「不对」，库里计入 wrong
+    // 3.1 V2 错误字母：即时 1 条错词事件 + 进度/连对归零，不污染完整答题统计
     const w1 = await answerOf()
-    await typeAndSubmit(view, w1 + 'x')
-    check('答错给出否定反馈', view.text().includes('不对'))
+    await typeWrongLetter(view, w1)
+    check('错误字母给出否定反馈', view.text().includes('字母不对'))
     {
       const s = (await getSessionById(sessionId))!
       const w = s.queue.find((x) => x.word === w1)!
-      check('答错计入 wrong_attempts', w.wrong_attempts === 1, `实际 ${w.wrong_attempts}`)
-      check('答错连续正确归零', w.consecutive_correct === 0)
-      check('答错不推进队列', s.current_position === 0)
+      const events = await storage.table('spellingErrorEvents').toArray()
+      check('错误字母落 1 条错词事件', events.length === 1, `实际 ${events.length}`)
+      check('错误字母不增加 wrong_attempts', w.wrong_attempts === 0, `实际 ${w.wrong_attempts}`)
+      check('错误字母不增加 total_attempts', w.total_attempts === 0, `实际 ${w.total_attempts}`)
+      check('错误字母使连续正确归零', w.consecutive_correct === 0)
+      check('错误字母后输入进度归零', (w.typed_prefix ?? '') === '')
+      check('错误字母不推进队列', s.current_position === 0)
     }
 
-    // 3.2 空白提交：invalid，不计任何计数
-    await typeAndSubmit(view, '   ')
-    check('空白提交有明确提示', view.text().includes('空白不算一次提交'))
+    // 3.2 非法字符：ignored，不计任何计数、不产生事件
+    const beforeIgnored = (await storage.table('spellingErrorEvents').toArray()).length
+    await typeWord(view, ' ')
+    check('非法字符有明确提示', view.text().includes('不参与拼写'))
     {
       const s = (await getSessionById(sessionId))!
       const w = s.queue.find((x) => x.word === w1)!
-      check('空白不计入 total_attempts', w.total_attempts === 1, `实际 ${w.total_attempts}（只有刚才那次错）`)
-      check('空白不重置连续正确', w.consecutive_correct === 0)
-      check('空白不推进队列', s.current_position === 0)
+      const events = await storage.table('spellingErrorEvents').toArray()
+      check('非法字符不产生错词事件', events.length === beforeIgnored, `实际 ${events.length}`)
+      check('非法字符不计入 total_attempts', w.total_attempts === 0, `实际 ${w.total_attempts}`)
+      check('非法字符不重置连续正确', w.consecutive_correct === 0)
+      check('非法字符不推进队列', s.current_position === 0)
     }
 
-    // 3.3 连对 3 次 → COMPLETED，且队列推进到下一个词
-    await typeAndSubmit(view, w1)
-    await typeAndSubmit(view, w1)
-    await typeAndSubmit(view, w1)
+    // 3.3 V2 拼完整个单词 3 次（每次 = 一次完整答题提交）→ COMPLETED 并切词
+    await typeWord(view, w1)
+    await typeWord(view, w1)
+    await typeWord(view, w1)
     {
       const s = (await getSessionById(sessionId))!
       const w = s.queue.find((x) => x.word === w1)!
-      check('连对 3 次后状态 COMPLETED', w.status === 'COMPLETED')
+      check('完整拼对 3 次后状态 COMPLETED', w.status === 'COMPLETED')
       check('连续正确计数为 3', w.consecutive_correct === 3)
+      check('完整答题提交次数为 3', w.total_attempts === 3, `实际 ${w.total_attempts}`)
       check('完成后队列推进', s.current_position === 1, `实际 ${s.current_position}`)
-      check('UI 显示完成反馈', view.text().includes('连对达成'))
+      check('UI 显示达标切词反馈', view.text().includes('整词达标'))
     }
 
     // 3.4 第二个词：跳过
@@ -330,9 +346,9 @@ async function main(): Promise<void> {
 
     // 3.5 第三个词答对 3 次 → 会话自然结束 → 自动跳结果页
     const w3 = await answerOf()
-    await typeAndSubmit(view, w3)
-    await typeAndSubmit(view, w3)
-    await typeAndSubmit(view, w3)
+    await typeWord(view, w3)
+    await typeWord(view, w3)
+    await typeWord(view, w3)
     await act(async () => {
       await sleep(1400) // 等 900ms 的自动跳转定时器
     })
@@ -373,9 +389,9 @@ async function main(): Promise<void> {
     check('UI 显示连对进度', view.text().includes('连对 1/3'), view.text().slice(0, 200))
     check('输入框可用', view.q('#spelling-input') !== null)
 
-    // 恢复后继续答对 2 次即完成该词（状态机跨刷新连续）
-    await typeAndSubmit(view, first)
-    await typeAndSubmit(view, first)
+    // 恢复后完整拼对 2 次即完成该词（状态机跨刷新连续）
+    await typeWord(view, first)
+    await typeWord(view, first)
     {
       const s = (await getSessionById(sid))!
       check('跨刷新连对累计到 3 → COMPLETED', s.queue[0].status === 'COMPLETED')
@@ -506,11 +522,11 @@ async function main(): Promise<void> {
       return originalGet.call(this, key)
     }
 
-    // 连对 3 次：第 3 次触发交接，交接失败
-    await typeAndSubmit(view, w)
-    await typeAndSubmit(view, w)
+    // V2 完整拼对 3 次：第 3 次达标 COMPLETED 触发交接，交接失败
+    await typeWord(view, w)
+    await typeWord(view, w)
     broken = true
-    await typeAndSubmit(view, w)
+    await typeWord(view, w)
     broken = false
     proto.get = originalGet
 
@@ -545,39 +561,45 @@ async function main(): Promise<void> {
   }
 
   /* ================================================================ */
-  /* 场景 8 · 快速重复提交不导致计数重复                              */
+  /* 场景 8 · V2 快速连打 + 同一 request_id 重放不重复计数            */
   /* ================================================================ */
-  console.log('\n场景 8 · 快速重复提交不重复计数')
+  console.log('\n场景 8 · 逐字母快速连打与幂等重放不重复计数')
   await seed()
   {
     const view = await renderAt('/spelling?mode=recent')
     const sid = (await getAllSessions())[0].id
     const s0 = (await getSessionById(sid))!
     const w = s0.queue[0].word
-    const input = view.q('#spelling-input') as HTMLInputElement
-    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!
 
-    // 连点 5 次提交（不等上一次返回）—— UI 的 busy 闸门应只放行第一个
-    await act(async () => {
-      setter.call(input, w)
-      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
-    })
-    const btn = view.qa('button').find((b) => b.textContent?.includes('提交'))!
-    for (let i = 0; i < 5; i += 1) {
-      await act(async () => {
-        btn.click()
-      })
-    }
-    await act(async () => {
-      await sleep(120)
-    })
+    // 一次性把整词所有字母连打进队列（不等上一次写入返回）——
+    // 页面的串行队列应完整消费，恰好拼完 1 次整词 = 1 次完整答题提交
+    await typeWord(view, w)
     {
       const s = (await getSessionById(sid))!
       const word0 = s.queue[0]
-      check('连点 5 次只计 1 次提交', word0.total_attempts === 1, `实际 ${word0.total_attempts}`)
-      check('连续正确只 +1', word0.consecutive_correct === 1, `实际 ${word0.consecutive_correct}`)
-      check('processed_requests 只有 1 个键', Object.keys(s.processed_requests).length === 1)
+      check('快速连打整词只计 1 次完整提交', word0.total_attempts === 1, `实际 ${word0.total_attempts}`)
+      check('快速连打连续正确只 +1', word0.consecutive_correct === 1, `实际 ${word0.consecutive_correct}`)
+      check('快速连打不产生错词事件', (await storage.table('spellingErrorEvents').toArray()).length === 0)
       check('队列没有重复推进', s.current_position === 0)
+      check('拼完后输入进度归零', (word0.typed_prefix ?? '') === '')
+      check('processed_letters 恰好为单词长度', Object.keys(s.processed_letters ?? {}).length === w.length,
+        `实际 ${Object.keys(s.processed_letters ?? {}).length}`)
+    }
+
+    // 领域层幂等：同一 request_id 重放同一错误字母，不重复落事件、不重复计数
+    const { submitLetter } = await import('../src/domain/spellingSession')
+    const before = (await storage.table('spellingErrorEvents').toArray()).length
+    const bad = w[0].toLowerCase() === 'z' ? 'q' : 'z'
+    await submitLetter({ word_id: s0.queue[0].word_id, char: bad, request_id: 'ui-replay-key' })
+    await submitLetter({ word_id: s0.queue[0].word_id, char: bad, request_id: 'ui-replay-key' })
+    await submitLetter({ word_id: s0.queue[0].word_id, char: bad, request_id: 'ui-replay-key' })
+    const after = (await storage.table('spellingErrorEvents').toArray()).length
+    check('同一 request_id 重放 3 次只落 1 条事件', after - before === 1, `实际 ${after - before}`)
+    {
+      const s = (await getSessionById(sid))!
+      check('重放不增加完整答题提交次数', s.queue[0].total_attempts === 1,
+        `实际 ${s.queue[0].total_attempts}`)
+      check('重放后连续正确归零', s.queue[0].consecutive_correct === 0)
     }
   }
 

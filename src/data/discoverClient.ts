@@ -112,7 +112,11 @@ async function requestJson<T>(
         payload !== null && typeof payload === 'object' && 'error' in payload
           ? (payload as { error?: { message?: string; code?: string } }).error
           : undefined
-      throw new ApiRequestError(response.status, body?.message ?? `请求失败（HTTP ${response.status}）`)
+      throw new ApiRequestError(
+        response.status,
+        body?.message ?? `请求失败（HTTP ${response.status}）`,
+        body?.code,
+      )
     }
     if (payload === null) {
       // 200 但 body 不是 JSON —— 典型场景：vite 代理没把 /api/discover

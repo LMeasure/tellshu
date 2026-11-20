@@ -1,9 +1,10 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
+import type { ServerResponse } from 'node:http'
 
 /**
  * 词库数据外置中间件（P0）
@@ -133,15 +134,49 @@ const DATA_INDEX_RE =
 const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8787'
 const DISCOVER_API_PROXY_TARGET =
   process.env.VITE_DISCOVER_API_PROXY_TARGET || 'http://127.0.0.1:8000'
+
+/**
+ * 代理层兜底（2026-10-22 修复「学习稿 HTTP 500」）：
+ * 后端不可达（没启动 / ECONNREFUSED）时，http-proxy 默认让请求以
+ * **裸 500（text/plain 空体）**结束——前端只能显示「请求失败（HTTP 500）」，
+ * 用户完全看不出是本地后端没启动（已实证复现，见转写链路修复核验报告）。
+ * 这里统一转为 503 JSON（code=backend_unreachable），前端按 code 区分
+ * 「后端没启动」与「AI/ASR 服务未接入」，给出可读文案与恢复方式。
+ */
+function proxyErrorHandler(_err: Error, _req: unknown, res: ServerResponse): void {
+  if (res.headersSent) return
+  res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' })
+  res.end(
+    JSON.stringify({
+      error: {
+        code: 'backend_unreachable',
+        message: '本地后端服务未连接：请确认 shutree 后端已启动（默认 127.0.0.1:8787）',
+      },
+    }),
+  )
+}
+
+/** 给一条代理配置挂上 error 兜底（dev 与 preview 共用同一份 apiProxy）。 */
+function withProxyErrorHandler(entry: ProxyOptions): ProxyOptions {
+  return {
+    ...entry,
+    configure: (proxy) => {
+      proxy.on('error', (err: Error, req: unknown, res: ServerResponse) => {
+        proxyErrorHandler(err, req, res)
+      })
+    },
+  }
+}
+
 const apiProxy = {
-  '/api/discover': {
+  '/api/discover': withProxyErrorHandler({
     target: DISCOVER_API_PROXY_TARGET,
     changeOrigin: false, // 同机转发，保持 Host 即可
-  },
-  '/api': {
+  }),
+  '/api': withProxyErrorHandler({
     target: API_PROXY_TARGET,
     changeOrigin: false, // 同机转发，保持 Host 即可
-  },
+  }),
 }
 
 export default defineConfig({

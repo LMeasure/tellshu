@@ -84,7 +84,7 @@ async function measure(page) {
     return {
       hasDesktopShell: !!aside && !!header,
       hasMobileShell: !!appFrame,
-      hasDock,
+      hasDock: !!dock,
       asideWidth: rect(aside),
       headerHeight: hdrH,
       contentWidth: cw ? Math.round(cw.getBoundingClientRect().width) : null,

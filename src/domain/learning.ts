@@ -15,6 +15,7 @@
 import { gradeDiagnosis, type DiagnoseAnswer, type DiagnoseLevel } from '../lib/diagnostic'
 import { storage } from '../services/storage'
 import { uuid } from '@/lib/uuid'
+import type { TranscriptSegment } from './transcript/types'
 import { enqueueSync } from '../services/sync'
 import type {
   DailyStat,
@@ -306,6 +307,8 @@ export async function saveReading(input: {
   chapters?: ReadingDoc['chapters']
   /** 初始页码（续读/覆盖保存时用） */
   last_page?: number
+  /** 音视频字幕转写的分段时间戳（type==='transcript' 时携带，供后续音频同步） */
+  segments?: TranscriptSegment[]
 }): Promise<ReadingDoc> {
   const now = Date.now()
   const id = input.id ?? `r_${now}_${Math.random().toString(36).slice(2, 8)}`
@@ -323,6 +326,7 @@ export async function saveReading(input: {
     media_type: input.media_type,
     ext: input.ext,
     chapters: input.chapters ?? prev?.chapters,
+    segments: input.segments ?? prev?.segments,
     last_page: input.last_page ?? prev?.last_page ?? 0,
     last_read_at: prev?.last_read_at,
     pinned_at: prev?.pinned_at,

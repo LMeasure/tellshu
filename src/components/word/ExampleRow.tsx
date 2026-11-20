@@ -78,7 +78,11 @@ export function ExampleRow({
               )
             })}
           </p>
-          {zh ? <p className="mt-1 text-sm text-muted-foreground">{zh}</p> : null}
+          {zh ? (
+            <p data-testid="example-zh" className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+              {zh}
+            </p>
+          ) : null}
         </div>
 
         {/* 播放 / 录音：右侧、与例句同行（需求 11） */}

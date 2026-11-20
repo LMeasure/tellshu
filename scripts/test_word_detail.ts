@@ -381,12 +381,17 @@ function main() {
     '弹窗副按钮不再是「先去生词本闯关」',
   )
   assert(
-    /完成\s*<\/Button>/.test(flow) && flow.includes('setCelebrate(true)'),
-    '弹窗副按钮改为「完成」，点击触发烟花庆祝',
+    /完成\s*<\/Button>/.test(flow) && flow.includes("navigate('/', { state: { firework: true } })"),
+    '弹窗副按钮改为「完成」，点击回主页并带烟花标记',
   )
   assert(
-    flow.includes('FireworkBurst') && /celebrate && <FireworkBurst/.test(flow),
-    '烟花庆祝组件挂在学习页（放完自动卸载）',
+    !flow.includes('setCelebrate') && !flow.includes('FireworkBurst'),
+    '烟花不挂学习页（导航会卸载），由 Home 播放',
+  )
+  const home = src('pages/Home.tsx')
+  assert(
+    home.includes('FireworkBurst') && home.includes('location.state') && home.includes('firework'),
+    'Home 接收 firework 标记并播放烟花（刷新 state 消失，不重放）',
   )
   const fwCard = src('components/learning/WordCard.tsx')
   assert(
@@ -403,6 +408,18 @@ function main() {
   assert(
     fw.includes('FIREWORK_TOTAL_MS') && fw.includes('fw-stage') && fw.includes('aria-hidden="true"'),
     '烟花组件：总时长常量 + 无障碍舞台（aria-hidden、不挡交互）',
+  )
+  assert(
+    fw.includes('BURST_COUNT = 11') && fw.includes('STAGGER_S = 0.16'),
+    '烟花密度：11 朵错峰绽放（10-21 加密）',
+  )
+  assert(
+    fw.includes('#fbbf24') && fw.includes('#f472b6') && fw.includes('pickColor'),
+    '烟花配色加权随机：新增金黄 / 淡粉，绿黄系为主（10-21 扩色）',
+  )
+  assert(
+    fw.includes("rand(26, 34)") && fw.includes('rand(52, 118)'),
+    '每朵粒子 26–34 颗、飞散 52–118px（密度上调）',
   )
   assert(
     css.includes('@keyframes fw-fly') && css.includes('@keyframes fw-rise'),

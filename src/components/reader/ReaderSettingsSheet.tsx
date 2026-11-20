@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import {
   BookOpen,
+  ChevronLeft,
   ChevronRight,
   Dices,
   Moon,
@@ -11,7 +12,6 @@ import {
   Sun,
   X,
 } from 'lucide-react'
-import { Sheet } from '@/components/ui/sheet'
 import { Segmented } from '@/components/ui/segmented'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -28,15 +28,17 @@ import { RATIO_OPTIONS, type MaskConfig, type MaskMode, type MaskTarget } from '
 import { isWeChatBrowser } from '@/lib/speech'
 
 /**
- * 阅读器设置模块 V3.0（2026-10-09 需求二/四）
+ * 阅读器设置模块 V3.1（2026-10-11 需求二/三/四）
  * ------------------------------------------------------------------
  * 不再自带 Sheet 外壳：本文件只导出**内容面板**，由「综合控制中心」承载
- * （顶部 5 项导航：目录 / 笔记 / 进度 / 听书 / 设置）。
+ * （底部常驻 5 项导航：目录 / 笔记 / 进度 / 听书 / 设置）。
  *
- *   SettingsPanel —— 设置页：顶部【阅读】/【记忆】双 Tab（条件渲染，不滑动隐藏）
- *      阅读：第一行 字号滑块 + 首行缩进按钮；第二行 行距 + 边距；
- *            合并行 字体 / 背景 / 翻页 等分宽度，显示当前值 + › ，点击弹出选择器。
- *      记忆：隐藏方式 / 比例 / 中英文目标 / 含标点。
+ *   SettingsPanel —— 设置页（仅「阅读」设置）：
+ *      第一行 字号滑块 + 首行缩进按钮（仅靠颜色区分状态）；
+ *      第二行 行距 + 边距；
+ *      合并行 字体 / 背景 / 翻页 等分宽度，点击弹出**不透明全遮罩**选择器；
+ *      底部「记忆设置 ›」行 → 滑出右侧**抽屉**（含记忆模式开关 + 记忆配置）。
+ *      顶部不再有「阅读 / 记忆」总开关（需求二：改为抽屉式滑出）。
  *   ListenPanel —— 听书页：播放/暂停 + 语速 + 刻度定时关闭 + 本集结束后关闭。
  */
 
@@ -103,15 +105,17 @@ export interface MemoPanelProps {
 /* ============================ 设置面板 ============================ */
 
 interface SettingsProps {
-  tab: SettingsTab
-  onTabChange: (t: SettingsTab) => void
+  mode: 'read' | 'memo'
+  onModeChange: (m: 'read' | 'memo') => void
   prefs: ReaderPrefs
   onChange: (patch: Partial<ReaderPrefs>) => void
   memo: MemoPanelProps
+  /** 关闭整个控制中心（点二级弹窗空白处 / 叉号全关时用） */
+  onCloseAll: () => void
 }
 
-export function SettingsPanel({ tab, onTabChange, prefs, onChange, memo }: SettingsProps) {
-  const [picker, setPicker] = useState<PickKind | null>(null)
+export function SettingsPanel({ mode, onModeChange, prefs, onChange, memo, onCloseAll }: SettingsProps) {
+  const [overlay, setOverlay] = useState<PickKind | null>(null)
 
   const fontLabel = FONT_OPTIONS.find((f) => f.key === prefs.fontFamily)?.label ?? '黑体'
   const pageLabel = PAGE_MODES.find((p) => p.key === prefs.pageMode)?.label ?? '平滑'
@@ -119,242 +123,248 @@ export function SettingsPanel({ tab, onTabChange, prefs, onChange, memo }: Setti
 
   return (
     <div className="space-y-5">
+      {/* 阅读 / 记忆 并列双 Tab（恢复 V3.0 总开关样式） */}
       <Segmented<SettingsTab>
-        value={tab}
-        onChange={onTabChange}
-        items={[
-          { key: 'read', label: '阅读' },
-          { key: 'memo', label: '记忆' },
-        ]}
+        value={mode}
+        onChange={(t) => onModeChange(t)}
+        items={[{ key: 'read', label: '阅读' }, { key: 'memo', label: '记忆' }]}
       />
-
-      {tab === 'read' ? (
-        <div className="space-y-4">
-          {/* 第一行：字号滑块 + 首行缩进按钮 */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <RowLabel text="字体大小" trailing={`${prefs.fontSize}px`} />
-              <input
-                type="range"
-                aria-label="字体大小"
-                min={READER_FONT_SIZE.min}
-                max={READER_FONT_SIZE.max}
-                step={READER_FONT_SIZE.step}
-                value={prefs.fontSize}
-                onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
-                className="range-primary h-9 w-full"
-              />
-            </div>
-            <div>
-              <RowLabel text="首行缩进" />
-              <IndentButton on={prefs.indent} onClick={() => onChange({ indent: !prefs.indent })} />
-            </div>
-          </div>
-
-          {/* 第二行：行距 + 边距 */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <RowLabel text="行距" trailing={prefs.lineHeight.toFixed(1)} />
-              <input
-                type="range"
-                aria-label="行距"
-                min={READER_LINE_HEIGHT.min}
-                max={READER_LINE_HEIGHT.max}
-                step={READER_LINE_HEIGHT.step}
-                value={prefs.lineHeight}
-                onChange={(e) => onChange({ lineHeight: Number(e.target.value) })}
-                className="range-primary h-9 w-full"
-              />
-            </div>
-            <div>
-              <RowLabel text="边距" trailing={MARGIN_SHORT[prefs.margin]} />
-              <input
-                type="range"
-                aria-label="边距"
-                min={0}
-                max={MARGINS.length - 1}
-                step={1}
-                value={Math.max(0, MARGINS.indexOf(prefs.margin))}
-                onChange={(e) => onChange({ margin: MARGINS[Number(e.target.value)] })}
-                className="range-primary h-9 w-full"
-              />
-            </div>
-          </div>
-
-          {/* 合并行：字体 / 背景 / 翻页 等分宽度，显示当前值 + › */}
-          <div className="grid grid-cols-3 gap-2">
-            <MergeItem label="字体" value={fontLabel} onClick={() => setPicker('font')} />
-            <MergeItem label="背景" value={themeLabel} onClick={() => setPicker('bg')} />
-            <MergeItem label="翻页" value={pageLabel} onClick={() => setPicker('page')} />
-          </div>
+      {mode === 'read' && (
+      <>
+      {/* 第一行：字体大小 + 首行缩进 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <RowLabel trailing={`${prefs.fontSize}px`} />
+          <input
+            type="range"
+            aria-label="字体大小"
+            min={READER_FONT_SIZE.min}
+            max={READER_FONT_SIZE.max}
+            step={READER_FONT_SIZE.step}
+            value={prefs.fontSize}
+            onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
+            className="range-primary h-9 w-full"
+          />
         </div>
-      ) : (
-        /* ——————— 记忆：记忆功能设置项 ——————— */
-        <div className="space-y-5">
+        <div>
+          <RowLabel text="首行缩进" />
+          <IndentButton on={prefs.indent} onClick={() => onChange({ indent: !prefs.indent })} />
+        </div>
+      </div>
+
+      {/* 第二行：行距 + 边距 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <RowLabel trailing={prefs.lineHeight.toFixed(1)} />
+          <input
+            type="range"
+            aria-label="行距"
+            min={READER_LINE_HEIGHT.min}
+            max={READER_LINE_HEIGHT.max}
+            step={READER_LINE_HEIGHT.step}
+            value={prefs.lineHeight}
+            onChange={(e) => onChange({ lineHeight: Number(e.target.value) })}
+            className="range-primary h-9 w-full"
+          />
+        </div>
+        <div>
+          <RowLabel trailing={MARGIN_SHORT[prefs.margin]} />
+          <input
+            type="range"
+            aria-label="边距"
+            min={0}
+            max={MARGINS.length - 1}
+            step={1}
+            value={Math.max(0, MARGINS.indexOf(prefs.margin))}
+            onChange={(e) => onChange({ margin: MARGINS[Number(e.target.value)] })}
+            className="range-primary h-9 w-full"
+          />
+        </div>
+      </div>
+
+      {/* 合并行：字体 / 背景 / 翻页 等分宽度，显示当前值 + › */}
+      <div className="grid grid-cols-3 gap-2">
+        <MergeItem label="字体" value={fontLabel} onClick={() => setOverlay('font')} />
+        <MergeItem label="背景" value={themeLabel} onClick={() => setOverlay('bg')} />
+        <MergeItem label="翻页" value={pageLabel} onClick={() => setOverlay('page')} />
+      </div>
+      </>
+      )}
+
+      {/* 记忆设置（与阅读并列的双 Tab 之一，点击「记忆」即显示） */}
+      {mode === 'memo' && (
+      <div className="space-y-5">
+        {/* 记忆模式由点击「记忆」Tab 进入（见上 Segmented onChange），不再设独立「启用/关闭」总开关 */}
+        <div>
+          <RowLabel icon={BookOpen} text="隐藏方式" />
+          <Segmented<MaskMode>
+            size="sm"
+            value={memo.config.mode}
+            onChange={(m) => memo.onChange({ mode: m })}
+            items={MASK_TABS}
+          />
+        </div>
+
+        {memo.config.mode === 'random' && (
           <div>
-            <RowLabel icon={BookOpen} text="隐藏方式" />
-            <Segmented<MaskMode>
-              size="sm"
-              value={memo.config.mode}
-              onChange={(m) => memo.onChange({ mode: m })}
-              items={MASK_TABS}
+            <div className="flex items-baseline justify-between">
+              <RowLabel text="隐藏比例" trailing={RATIO_LABEL[memo.config.ratio]} />
+              <button
+                onClick={memo.onReshuffle}
+                className="mb-1 flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground touch-target-sm"
+              >
+                <Dices className="h-3.5 w-3.5" /> 换一批
+              </button>
+            </div>
+            <input
+              type="range"
+              aria-label="隐藏比例"
+              min={0}
+              max={RATIO_OPTIONS.length - 1}
+              step={1}
+              value={Math.max(0, RATIO_OPTIONS.findIndex((r) => r === memo.config.ratio))}
+              onChange={(e) => memo.onChange({ ratio: RATIO_OPTIONS[Number(e.target.value)] })}
+              className="range-primary h-9 w-full"
             />
           </div>
+        )}
 
-          {memo.config.mode === 'random' && (
-            <div>
-              <div className="flex items-baseline justify-between">
-                <RowLabel text="隐藏比例" trailing={RATIO_LABEL[memo.config.ratio]} />
-                <button
-                  onClick={memo.onReshuffle}
-                  className="mb-1 flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground touch-target-sm"
-                >
-                  <Dices className="h-3.5 w-3.5" /> 换一批
-                </button>
-              </div>
-              <input
-                type="range"
-                aria-label="隐藏比例"
-                min={0}
-                max={RATIO_OPTIONS.length - 1}
-                step={1}
-                value={Math.max(0, RATIO_OPTIONS.findIndex((r) => r === memo.config.ratio))}
-                onChange={(e) => memo.onChange({ ratio: RATIO_OPTIONS[Number(e.target.value)] })}
-                className="range-primary h-9 w-full"
-              />
+        {memo.config.mode === 'random' && memo.bilingual && (
+          <div>
+            <RowLabel text="隐藏哪一门" />
+            <div className="flex gap-1.5">
+              {TARGET_TABS.map((t) => (
+                <ChoiceChip
+                  key={t.key}
+                  label={t.label}
+                  active={(memo.config.target ?? 'all') === t.key}
+                  onClick={() => memo.onChange({ target: t.key })}
+                  compact
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {memo.config.mode === 'full' && (
+          <div>
+            <RowLabel text="标点" />
+            <Segmented<'no-punc' | 'with-punc'>
+              size="sm"
+              value={memo.config.hidePunctuation ? 'with-punc' : 'no-punc'}
+              onChange={(v) => memo.onChange({ hidePunctuation: v === 'with-punc' })}
+              items={[
+                { key: 'no-punc', label: '不含标点' },
+                { key: 'with-punc', label: '含标点' },
+              ]}
+            />
+          </div>
+        )}
+
+        {memo.config.mode === 'manual' && (
+          <p className="rounded-xl bg-secondary/60 p-3 text-xs text-muted-foreground">
+            在正文里点按或横向滑动选词（再滑一次取消），选好后回到正文点「完成选择」开始默写。
+          </p>
+        )}
+
+        <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+          默写的计时、清空、核验、录音按钮都在正文里，随当前页操作。
+        </p>
+      </div>
+      )}
+
+      {/* —— 二级弹窗（不透明全遮罩，X 回主面板、空白全关）—— */}
+      {overlay && (
+        <CoverOverlay
+          title={overlay === 'font' ? '字体' : overlay === 'bg' ? '背景' : '翻页方式'}
+          fromRight={false}
+          onBack={() => setOverlay(null)}
+          onCloseAll={onCloseAll}
+        >
+          {overlay === 'font' && (
+            <div className="grid grid-cols-3 gap-2">
+              {FONT_OPTIONS.map((f) => (
+                <ChoiceChip
+                  key={f.key}
+                  label={f.label}
+                  active={prefs.fontFamily === f.key}
+                  onClick={() => {
+                    onChange({ fontFamily: f.key })
+                    setOverlay(null)
+                  }}
+                  style={{ fontFamily: FONT_PREVIEW[f.key] }}
+                />
+              ))}
             </div>
           )}
 
-          {memo.config.mode === 'random' && memo.bilingual && (
-            <div>
-              <RowLabel text="隐藏哪一门" />
-              <div className="flex gap-1.5">
-                {TARGET_TABS.map((t) => (
-                  <ChoiceChip
-                    key={t.key}
-                    label={t.label}
-                    active={(memo.config.target ?? 'all') === t.key}
-                    onClick={() => memo.onChange({ target: t.key })}
-                    compact
+          {overlay === 'page' && (
+            <div className="grid grid-cols-2 gap-2">
+              {PAGE_MODES.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => {
+                    onChange({ pageMode: p.key })
+                    setOverlay(null)
+                  }}
+                  aria-pressed={prefs.pageMode === p.key}
+                  className={cn(
+                    'rounded-xl border px-3 py-2.5 text-left touch-target',
+                    prefs.pageMode === p.key ? 'border-primary bg-primary/10' : 'border-border bg-card',
+                  )}
+                >
+                  <div className="text-sm font-medium">{p.label}</div>
+                  <div className="text-[11px] text-muted-foreground">{p.hint}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {overlay === 'bg' && (
+            <div className="space-y-4">
+              <div>
+                <RowLabel icon={Sun} text="亮度" trailing={`${Math.round(prefs.brightness * 100)}%`} />
+                <div className="flex items-center gap-3">
+                  <Sun className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="range"
+                    aria-label="亮度"
+                    min={READER_BRIGHTNESS.min}
+                    max={READER_BRIGHTNESS.max}
+                    step={READER_BRIGHTNESS.step}
+                    value={prefs.brightness}
+                    onChange={(e) => onChange({ brightness: Number(e.target.value) })}
+                    className="range-primary h-9 flex-1"
                   />
+                  <Moon className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {THEME_OPTIONS.map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => {
+                      onChange({ theme: t.key })
+                      setOverlay(null)
+                    }}
+                    aria-pressed={prefs.theme === t.key}
+                    aria-label={`主题：${t.label}`}
+                    title={`主题：${t.label}`}
+                    className={cn(
+                      'flex h-14 items-center justify-center rounded-xl border-2 touch-target',
+                      prefs.theme === t.key ? 'border-primary' : 'border-border',
+                    )}
+                    style={{ background: THEME_SWATCH[t.key] }}
+                  >
+                    {t.key === 'dark' && <Moon className="h-4 w-4 text-primary" />}
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-          {memo.config.mode === 'full' && (
-            <div>
-              <RowLabel text="标点" />
-              <Segmented<'no-punc' | 'with-punc'>
-                size="sm"
-                value={memo.config.hidePunctuation ? 'with-punc' : 'no-punc'}
-                onChange={(v) => memo.onChange({ hidePunctuation: v === 'with-punc' })}
-                items={[
-                  { key: 'no-punc', label: '不含标点' },
-                  { key: 'with-punc', label: '含标点' },
-                ]}
-              />
-            </div>
-          )}
-
-          {memo.config.mode === 'manual' && (
-            <p className="rounded-xl bg-secondary/60 p-3 text-xs text-muted-foreground">
-              在正文里点按或横向滑动选词（再滑一次取消），选好后回到正文点「完成选择」开始默写。
-            </p>
-          )}
-
-          <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-            默写的计时、清空、核验、录音按钮都在正文里，随当前页操作。
-          </p>
-        </div>
+        </CoverOverlay>
       )}
-
-      {/* —— 选择器（点击合并行弹出）—— */}
-      <PickerSheet
-        open={picker !== null}
-        title={picker === 'font' ? '字体' : picker === 'bg' ? '背景' : '翻页方式'}
-        onClose={() => setPicker(null)}
-      >
-        {picker === 'font' && (
-          <div className="grid grid-cols-3 gap-2">
-            {FONT_OPTIONS.map((f) => (
-              <ChoiceChip
-                key={f.key}
-                label={f.label}
-                active={prefs.fontFamily === f.key}
-                onClick={() => {
-                  onChange({ fontFamily: f.key })
-                  setPicker(null)
-                }}
-                style={{ fontFamily: FONT_PREVIEW[f.key] }}
-              />
-            ))}
-          </div>
-        )}
-        {picker === 'page' && (
-          <div className="grid grid-cols-2 gap-2">
-            {PAGE_MODES.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => {
-                  onChange({ pageMode: p.key })
-                  setPicker(null)
-                }}
-                aria-pressed={prefs.pageMode === p.key}
-                className={cn(
-                  'rounded-xl border px-3 py-2.5 text-left touch-target',
-                  prefs.pageMode === p.key ? 'border-primary bg-primary/10' : 'border-border bg-card',
-                )}
-              >
-                <div className="text-sm font-medium">{p.label}</div>
-                <div className="text-[11px] text-muted-foreground">{p.hint}</div>
-              </button>
-            ))}
-          </div>
-        )}
-        {picker === 'bg' && (
-          <div className="space-y-4">
-            <div>
-              <RowLabel icon={Sun} text="亮度" trailing={`${Math.round(prefs.brightness * 100)}%`} />
-              <div className="flex items-center gap-3">
-                <Sun className="h-4 w-4 text-muted-foreground" />
-                <input
-                  type="range"
-                  aria-label="亮度"
-                  min={READER_BRIGHTNESS.min}
-                  max={READER_BRIGHTNESS.max}
-                  step={READER_BRIGHTNESS.step}
-                  value={prefs.brightness}
-                  onChange={(e) => onChange({ brightness: Number(e.target.value) })}
-                  className="range-primary h-9 flex-1"
-                />
-                <Moon className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {THEME_OPTIONS.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => {
-                    onChange({ theme: t.key })
-                    setPicker(null)
-                  }}
-                  aria-pressed={prefs.theme === t.key}
-                  aria-label={`主题：${t.label}`}
-                  title={`主题：${t.label}`}
-                  className={cn(
-                    'flex h-14 items-center justify-center rounded-xl border-2 touch-target',
-                    prefs.theme === t.key ? 'border-primary' : 'border-border',
-                  )}
-                  style={{ background: THEME_SWATCH[t.key] }}
-                >
-                  {t.key === 'dark' && <Moon className="h-4 w-4 text-primary" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </PickerSheet>
     </div>
   )
 }
@@ -425,7 +435,7 @@ export function ListenPanel({
         )}
       </div>
 
-      {/* 定时关闭：刻度滑杆 关 / 30 / 60 / 90（15 / 45 为小刻度） */}
+      {/* 定时关闭：刻度滑杆 关 / 15 / 30 / 45 / 60 / 90 */}
       <div className="rounded-2xl bg-secondary/60 p-3">
         <div className="mb-1 flex items-baseline justify-between">
           <span className="text-sm font-medium">
@@ -524,7 +534,7 @@ function RowLabel({
   trailing,
 }: {
   icon?: typeof Sun
-  text: string
+  text?: string
   trailing?: string
 }) {
   return (
@@ -537,7 +547,8 @@ function RowLabel({
 }
 
 /**
- * 首行缩进按钮（需求二·严格按此设计）：
+ * 首行缩进按钮（需求三·严格按此设计）：
+ *   仅靠颜色区分状态，去掉「开/关」文字——
  *   未开启 = 绿框 + 白底 + 绿字；已开启 = 绿框 + 绿底 + 白字。
  */
 function IndentButton({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -546,6 +557,7 @@ function IndentButton({ on, onClick }: { on: boolean; onClick: () => void }) {
       onClick={onClick}
       aria-pressed={on}
       aria-label={on ? '关闭首行缩进' : '开启首行缩进'}
+      title={on ? '首行缩进：开' : '首行缩进：关'}
       className={cn(
         'flex h-9 w-full items-center justify-center rounded-xl border text-sm font-medium transition-colors touch-target',
         on
@@ -553,7 +565,7 @@ function IndentButton({ on, onClick }: { on: boolean; onClick: () => void }) {
           : 'border-primary bg-card text-primary',
       )}
     >
-      {on ? '首行缩进 开' : '首行缩进 关'}
+      首行缩进
     </button>
   )
 }
@@ -566,7 +578,6 @@ function MergeItem({ label, value, onClick }: { label: string; value: string; on
       title={`${label}：${value}`}
       className="flex min-w-0 flex-col items-start gap-1 rounded-xl bg-secondary/40 px-3 py-2.5 text-left touch-target"
     >
-      <span className="text-[11px] text-muted-foreground">{label}</span>
       <span className="flex w-full min-w-0 items-center justify-between text-sm font-medium">
         <span className="truncate">{value}</span>
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -575,33 +586,62 @@ function MergeItem({ label, value, onClick }: { label: string; value: string; on
   )
 }
 
-/** 简易选择器弹层（合并行点击后弹出） */
-function PickerSheet({
-  open,
+/**
+ * 二级弹窗 / 抽屉（需求四）：不透明全遮罩，完整覆盖主面板。
+ *   · 点 X（叉号）= 返回主面板（onBack）
+ *   · 点空白处（遮罩）= 关闭整个控制中心（onCloseAll）
+ *   · fromRight：记忆抽屉从右侧滑入，其余从底部滑入
+ */
+function CoverOverlay({
   title,
-  onClose,
+  fromRight,
+  onBack,
+  onCloseAll,
   children,
 }: {
-  open: boolean
   title: string
-  onClose: () => void
+  fromRight?: boolean
+  onBack: () => void
+  onCloseAll: () => void
   children: ReactNode
 }) {
   return (
-    <Sheet open={open} onClose={onClose}>
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-base font-semibold">{title}</span>
-        <button
-          onClick={onClose}
-          aria-label="关闭"
-          title="关闭"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"
+    <>
+      <div className="fixed inset-0 z-[54] bg-black/40" onClick={onCloseAll} aria-hidden />
+      <div
+        className={cn(
+          'fixed inset-x-0 bottom-0 z-[55] flex max-h-[68vh] flex-col overflow-hidden rounded-t-2xl bg-card shadow-soft safe-bottom',
+          fromRight ? 'animate-drawer-in' : 'animate-slide-up',
+        )}
+        onClick={onCloseAll}
+      >
+        <div
+          className="flex items-center justify-between border-b border-border px-4 py-2.5"
+          onClick={(e) => e.stopPropagation()}
         >
-          <X className="h-4 w-4" />
-        </button>
+          <button
+            onClick={onBack}
+            aria-label="返回"
+            title="返回"
+            className="flex items-center gap-1 text-sm text-muted-foreground touch-target-sm"
+          >
+            <ChevronLeft className="h-4 w-4" /> 返回
+          </button>
+          <span className="text-sm font-semibold">{title}</span>
+          <button
+            onClick={onCloseAll}
+            aria-label="关闭"
+            title="关闭"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary touch-target-sm"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3" onClick={(e) => e.stopPropagation()}>
+          {children}
+        </div>
       </div>
-      {children}
-    </Sheet>
+    </>
   )
 }
 

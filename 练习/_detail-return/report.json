@@ -1,0 +1,138 @@
+{
+  "startedAt": "2026-11-01T13:18:32.044Z",
+  "base": "http://127.0.0.1:4174",
+  "checks": [
+    {
+      "id": "G1-true",
+      "name": "chineseAssist=true（默认）：英文例句显示",
+      "ok": true,
+      "detail": "en=3"
+    },
+    {
+      "id": "G1-true-zh",
+      "name": "chineseAssist=true（默认）：中文翻译显示",
+      "ok": true,
+      "detail": "zh=3"
+    },
+    {
+      "id": "G1-true-def",
+      "name": "chineseAssist=true：核心中文释义仍显示",
+      "ok": true,
+      "detail": "senseLines=1"
+    },
+    {
+      "id": "G1-false-zh",
+      "name": "chineseAssist=false：中文翻译仍显示（全局常驻）",
+      "ok": true,
+      "detail": "zh=3"
+    },
+    {
+      "id": "G1-false-en",
+      "name": "chineseAssist=false：英文例句仍显示",
+      "ok": true,
+      "detail": "en=3"
+    },
+    {
+      "id": "G1-false-def",
+      "name": "chineseAssist=false：核心中文释义仍显示（不因开关消失）",
+      "ok": true,
+      "detail": "senseLines=1"
+    },
+    {
+      "id": "G1-empty",
+      "name": "所有 example-zh 元素均非空（无空白内容）",
+      "ok": true,
+      "detail": "empty=0"
+    },
+    {
+      "id": "G2-pop",
+      "name": "点击例句单词弹出查词浮层",
+      "ok": true,
+      "detail": "popover=true"
+    },
+    {
+      "id": "G2-noswitch",
+      "name": "点词本身不切换卡片（仍在 /learn 同词）",
+      "ok": true,
+      "detail": "word=ad"
+    },
+    {
+      "id": "G2-inside",
+      "name": "点浮层内部（非按钮）不误触发切卡",
+      "ok": true,
+      "detail": "word=ad url=/learn"
+    },
+    {
+      "id": "G2-close",
+      "name": "点遮罩关闭浮层且不切卡",
+      "ok": true,
+      "detail": "popover=false word=ad"
+    },
+    {
+      "id": "G3-wordarea-swipe",
+      "name": "从例句单词区域左滑仍可切卡（ad → as）",
+      "ok": true,
+      "detail": "ad → as"
+    },
+    {
+      "id": "G4-browser-nav",
+      "name": "「查看详情」跳转到 /word/:word",
+      "ok": true,
+      "detail": "url=/word/she"
+    },
+    {
+      "id": "G4-browser-word",
+      "name": "返回后当前单词不丢（=at）",
+      "ok": true,
+      "detail": "word=at"
+    },
+    {
+      "id": "G4-browser-prog",
+      "name": "返回后学习进度不回退（已学 2）",
+      "ok": true,
+      "detail": "已学=2"
+    },
+    {
+      "id": "G4-browser-sess",
+      "name": "返回后学习会话不重复（=1）",
+      "ok": true,
+      "detail": "会话数=1"
+    },
+    {
+      "id": "G4-browser-scroll",
+      "name": "返回后滚动位置合理（scrollY=0, 卡片可见=true）",
+      "ok": true,
+      "detail": "scrollY=0 visible=true"
+    },
+    {
+      "id": "G4-inpage-nav",
+      "name": "「查看详情」跳转到 /word/:word",
+      "ok": true,
+      "detail": "url=/word/she"
+    },
+    {
+      "id": "G4-inpage-word",
+      "name": "返回后当前单词不丢（=at）",
+      "ok": true,
+      "detail": "word=at"
+    },
+    {
+      "id": "G4-inpage-prog",
+      "name": "返回后学习进度不回退（已学 2）",
+      "ok": true,
+      "detail": "已学=2"
+    },
+    {
+      "id": "G4-inpage-sess",
+      "name": "返回后学习会话不重复（=1）",
+      "ok": true,
+      "detail": "会话数=1"
+    },
+    {
+      "id": "G4-inpage-scroll",
+      "name": "返回后滚动位置合理（scrollY=0, 卡片可见=true）",
+      "ok": true,
+      "detail": "scrollY=0 visible=true"
+    }
+  ]
+}

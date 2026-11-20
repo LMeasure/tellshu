@@ -21,6 +21,8 @@ export interface Transcript {
   /** 秒；服务端未定时由段落最大 end 推导 */
   duration: number
   segments: TranscriptSegment[]
+  /** 原始文件名（落库与导出命名用；不臆造，未带时缺省） */
+  fileName?: string
 }
 
 export type AsrJobStatus = 'queued' | 'running' | 'done' | 'failed'
@@ -58,6 +60,8 @@ export interface TranscriptRecord {
   language: string
   duration: number
   segments: TranscriptSegment[]
+  /** 原始文件名（落库与导出命名用；不臆造，未带时缺省） */
+  fileName?: string
   /** epoch ms */
   created_at: number
   /** 'asr'；后续学习稿可能另有来源 */

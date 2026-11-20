@@ -1,0 +1,185 @@
+  ✓ storage 走真实 Dexie 驱动（未降级内存）  dexie
+
+场景 1 · /review 入口与路由
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+  ✓ Review 页渲染出「单词默写」卡片
+  ✓ 入口卡片带模式切换（随机/最近新增/易错词）
+  ✓ 入口卡片显示沿用设置的每轮词数
+  ✓ 入口说明连对目标
+  ✓ 找到「开始默写」按钮
+  ✓ 点击后路由切到 /spelling  /spelling
+  ✓ mode 通过 query 传递  ?mode=recent
+
+场景 2 · 出题来自持久化队列
+  ✓ 自动创建会话并进入练习
+  ✓ 库里只有一份进行中会话  实际 1
+  ✓ 持久化队列有 3 个词（batchSize=3）  实际 3
+  ✓ current_position 指向队列首位
+  ✓ 页面不直接泄露任何答案
+  ✓ 展示中文释义  n. 雏菊
+  ✓ 展示首字母与长度提示
+
+场景 3 · 提交反馈与判分
+[dataClient] 拉取失败（已重试 1 次）/data/linguabase/v1/catalog.json TypeError: Failed to parse URL from /data/linguabase/v1/catalog.json
+    at node:internal/deps/undici/undici:14976:13
+    at async runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:19)
+    at async Object.getCatalog (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:227:15) {
+  [cause]: TypeError: Invalid URL
+      at new URL (node:internal/url:818:25)
+      at new Request (node:internal/deps/undici/undici:9804:25)
+      at fetch (node:internal/deps/undici/undici:10533:25)
+      at fetch (node:internal/deps/undici/undici:14974:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
+      at runFetch (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\dataClient.ts:235:25)
+      at async Object.getCatalog (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\data\repository.ts:227:15) {
+    code: 'ERR_INVALID_URL',
+    input: '/data/linguabase/v1/catalog.json'
+  }
+}
+[dataClient] 数据不可用 /data/linguabase/v1/catalog.json
+  ✓ 错误字母给出否定反馈
+  ✓ 错误字母落 1 条错词事件  实际 1
+  ✓ 错误字母不增加 wrong_attempts  实际 0
+  ✓ 错误字母不增加 total_attempts  实际 0
+  ✓ 错误字母使连续正确归零
+  ✓ 错误字母后输入进度归零
+  ✓ 错误字母不推进队列
+  ✓ 非法字符有明确提示
+  ✓ 非法字符不产生错词事件  实际 1
+  ✓ 非法字符不计入 total_attempts  实际 0
+  ✓ 非法字符不重置连续正确
+  ✓ 非法字符不推进队列
+  ✓ 完整拼对 3 次后状态 COMPLETED
+  ✓ 连续正确计数为 3
+  ✓ 完整答题提交次数为 3  实际 3
+  ✓ 完成后队列推进  实际 1
+  ✓ UI 显示达标切词反馈
+  ✓ 找到「跳过」按钮
+  ✓ 跳过词状态为 SKIPPED
+  ✓ 跳过后队列推进  实际 2
+  ✓ 跳过不计入提交次数
+  ✓ 会话结束后自动跳 /spelling-result  /spelling-result
+  ✓ 结果页带会话 id
+Warning: An update to SpellingResult inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SpellingResult (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\pages\SpellingResult.tsx:37:20)
+    at RenderedRoute (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\hooks.tsx:658:26)
+    at Routes (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:512:3)
+    at Router (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:421:13)
+    at MemoryRouter (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:225:3)
+Warning: An update to SpellingResult inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SpellingResult (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\pages\SpellingResult.tsx:37:20)
+    at RenderedRoute (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\hooks.tsx:658:26)
+    at Routes (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:512:3)
+    at Router (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:421:13)
+    at MemoryRouter (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:225:3)
+Warning: An update to SpellingResult inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SpellingResult (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\src\pages\SpellingResult.tsx:37:20)
+    at RenderedRoute (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\hooks.tsx:658:26)
+    at Routes (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:512:3)
+    at Router (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:421:13)
+    at MemoryRouter (C:\Users\lagom\WorkBuddy\2026-10-02-10-40-40\shutree\述树交付包\node_modules\react-router\lib\components.tsx:225:3)
+  ✓ 库里会话状态 SESSION_COMPLETED
+  ✓ 完成 2 个 / 跳过 1 个
+
+场景 4 · 刷新后恢复会话
+  ✓ 刷新后恢复同一会话（没有新开一份）
+  ✓ 刷新后连对进度保留
+  ✓ 刷新后出题位置不变
+  ✓ UI 显示连对进度  0/3第 1 个 · 最近新增连对 1/3n. 雏菊_____· 5 个字母 · 第 1 个逐字母拼写 跳过逐字母判定：每个错误字母记 1 条错词事件，不算一次答题提交连对 3 次记为掌握，并计入生词本复习排程
+  ✓ 输入框可用
+  ✓ 跨刷新连对累计到 3 → COMPLETED
+
+场景 5 · 暂停 / 继续 / 放弃
+  ✓ 找到暂停按钮（带 aria-label）
+  ✓ 暂停后显示暂停态
+  ✓ 库里状态为 PAUSED
+  ✓ 暂停后不算进行中会话
+  ✓ 刷新后仍识别为暂停态
+  ✓ 找到「继续默写」按钮
+  ✓ 继续后回到练习态
+  ✓ 库里回到 IN_PROGRESS
+  ✓ 暂停态有「放弃本轮」
+  ✓ 放弃后回到 /review  /review
+  ✓ 库里会话为 ABANDONED
+
+场景 6 · 多标签页冲突提示
+  ✓ 检测到冲突并提示
+  ✓ 提示明确说不保证互斥
+  ✓ 列出两份会话供选择
+  ✓ 不自动替用户裁决（没有直接进入练习）
+  ✓ 列表按开始时间倒序  conflict-b,conflict-a
+  ✓ 找到「保留选中的，放弃其余」
+  ✓ 裁决后进入练习
+  ✓ 保留下来的正是选中的那份
+  ✓ 另一份被放弃
+  ✓ UI 恢复的就是选中的那份  conflict-a
+
+场景 7 · SRS 交接待重试状态
+  ✓ 交接失败时提示待重试
+  ✓ 不显示任何"已同步"类不实状态
+  ✓ 词条仍为 COMPLETED
+  ✓ srs_reported 仍为 false（待重试）
+  ✓ 没有伪造 SRS 记录  实际 0
+  ✓ 重新进入页面后补交成功
+  ✓ 补交后恰好 1 条 spelling 记录  实际 1
+  ✓ 补交成功后待重试提示消失
+
+场景 8 · 逐字母快速连打与幂等重放不重复计数
+  ✓ 快速连打整词只计 1 次完整提交  实际 1
+  ✓ 快速连打连续正确只 +1  实际 1
+  ✓ 快速连打不产生错词事件
+  ✓ 队列没有重复推进
+  ✓ 拼完后输入进度归零
+  ✓ processed_letters 恰好为单词长度  实际 5
+  ✓ 同一 request_id 重放 3 次只落 1 条事件  实际 1
+  ✓ 重放不增加完整答题提交次数  实际 1
+  ✓ 重放后连续正确归零
+
+场景 9 · 结果页
+  ✓ 结果页渲染完成数
+  ✓ 展示逐词明细（3 行）
+  ✓ 明细含失效词条的原因
+  ✓ 展示正确率（4 次提交 3 对 = 75%）
+  ✓ 展示用时
+  ✓ 刷新后结果一致
+  ✓ 会话不存在时给出提示
+  ✓ 提供返回入口
+  ✓ 缺少 id 也不伪造结果
+
+场景 10 · 空池空态
+  ✓ 没有可默写词时走空态
+  ✓ 空态不出现输入框
+  ✓ 没有落一份空会话占位
+
+────────────────────────────────────────────────────────
+✅ 单词默写前端验收全部通过：96 项断言
+未覆盖声明：jsdom 无布局引擎——重叠/溢出/遮挡/视口自适应未经渲染验证；
+导航以「URL 变化 + 目标组件出现」验证，未 mock navigate。

@@ -115,6 +115,15 @@
     animation: slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* 设置项二级弹窗 / 记忆抽屉：从右侧滑入 */
+  @keyframes drawer-in {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  .animate-drawer-in {
+    animation: drawer-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   /* 全局滚动条（细绿条，移动端可见）—— 满足「内置滚动条」 */
   .app-frame main {
     scrollbar-width: thin;
@@ -170,6 +179,27 @@
   /* 书架卡片 */
   .shelf-card {
     @apply rounded-xl bg-card p-2 text-left shadow-soft;
+  }
+}
+
+/* ===== 单词学习页：左右滑动切词的进场动画（2026-10-31）=====
+   位移小、时长短（220ms），只做「换了张卡」的轻量提示；
+   跟手阶段由 JS 直接改 transform，这里只负责松手后的落位。 */
+@keyframes wl-in-right {
+  from { opacity: 0.35; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes wl-in-left {
+  from { opacity: 0.35; transform: translateX(-16px); }
+  to { opacity: 1; transform: none; }
+}
+.wl-in-right { animation: wl-in-right 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.wl-in-left { animation: wl-in-left 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* 系统开了「减少动态效果」就直接换卡，不做位移动画 */
+@media (prefers-reduced-motion: reduce) {
+  .wl-in-right,
+  .wl-in-left {
+    animation: none;
   }
 }
 
@@ -465,6 +495,10 @@ input[type='range'].range-primary::-moz-range-thumb {
   height: 0;
   display: none;
 }
+/* 划词：屏蔽 iOS 长按系统菜单（callout），只保留自定义划词弹窗（写笔记 / 高亮等） */
+.reader-page, .reader-scroll {
+  -webkit-touch-callout: none;
+}
 
 /* 隐藏测量探针（用于按真实高度分页，绝不显示给用户）
    样式必须与正文 article 完全一致（whitespace-pre-wrap + break-words），
@@ -477,6 +511,7 @@ input[type='range'].range-primary::-moz-range-thumb {
   pointer-events: none;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+  padding: 0;
   z-index: -1;
 }
 

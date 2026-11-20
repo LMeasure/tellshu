@@ -65,14 +65,14 @@ export function SelectionPopup({
     const vw = window.innerWidth
     const vh = window.innerHeight
 
-    // 纵向：优先放选区下方（避开系统菜单），放不下再放上方，都放不下则夹住
+    // 纵向：优先放选区上方（更贴近阅读视线，且系统菜单已屏蔽），上方放不下才放下方，都放不下则夹住
     let top: number
-    if (rect.bottom + GAP + h <= vh - EDGE) {
-      top = rect.bottom + GAP
-    } else if (rect.top - GAP - h >= EDGE) {
+    if (rect.top - GAP - h >= EDGE) {
       top = rect.top - GAP - h
+    } else if (rect.bottom + GAP + h <= vh - EDGE) {
+      top = rect.bottom + GAP
     } else {
-      top = Math.max(EDGE, Math.min(rect.bottom + GAP, vh - h - EDGE))
+      top = Math.max(EDGE, Math.min(rect.top - GAP - h, vh - h - EDGE))
     }
     const left = Math.min(Math.max(EDGE, rect.left + rect.width / 2 - w / 2), Math.max(EDGE, vw - w - EDGE))
     setPos({ top, left })
@@ -87,6 +87,7 @@ export function SelectionPopup({
         e.stopPropagation()
         onInteract?.()
       }}
+      onClick={(e) => e.stopPropagation()}
       data-testid="selection-popup"
     >
       {/* 主行：听书 / 复制 / 划线 / 写想法 / 反馈 */}
@@ -103,10 +104,10 @@ export function SelectionPopup({
         <PopBtn icon={Mail} label="反馈" onClick={onFeedback} />
       </div>
 
-      {/* 划线行：三种样式 + 五种颜色，点按即应用（记住最近一次选择） */}
+      {/* 划线行：三种样式 + 五种颜色，点按即应用（记住最近一次选择）；单行不换行 */}
       {styleOpen && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-border px-1 pt-1.5">
-          <div className="flex gap-1">
+        <div className="mt-1.5 flex items-center gap-2 border-t border-border px-1 pt-1.5">
+          <div className="flex shrink-0 gap-1">
             {ANNOTATION_STYLE_OPTIONS.map((s) => (
               <button
                 key={s.key}
@@ -133,7 +134,7 @@ export function SelectionPopup({
               </button>
             ))}
           </div>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex shrink-0 gap-1.5">
             {ANNOTATION_COLOR_OPTIONS.map((c) => (
               <button
                 key={c}
@@ -141,7 +142,7 @@ export function SelectionPopup({
                 aria-label={`划线颜色：${c}`}
                 title={`划线颜色：${c}`}
                 className={cn(
-                  'h-5 w-5 rounded-full border-2 touch-target-sm',
+                  'h-6 w-6 shrink-0 rounded-full border-2',
                   defaultColor === c ? 'border-foreground' : 'border-transparent',
                 )}
                 style={{ backgroundColor: ANNOTATION_COLOR_HEX[c] }}

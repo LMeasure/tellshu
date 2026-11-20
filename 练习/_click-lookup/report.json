@@ -1,0 +1,48 @@
+{
+  "startedAt": "2026-11-01T13:18:27.497Z",
+  "base": "http://127.0.0.1:4174",
+  "checks": [
+    {
+      "id": "L0",
+      "name": "找到带例句且有中文翻译的卡片",
+      "ok": true,
+      "detail": "word=ad exEn=3 exZh=3"
+    },
+    {
+      "id": "L1",
+      "name": "默认中文辅助开启时例句中文翻译可见（消失问题已修复/本就正确）",
+      "ok": true,
+      "detail": "exZh=3"
+    },
+    {
+      "id": "L2",
+      "name": "例句英文拆成可点单词按钮（>0）",
+      "ok": true,
+      "detail": "按钮数=8 首词=She"
+    },
+    {
+      "id": "L3",
+      "name": "点击例句单词弹出查词小窗（含「查看详情」）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "L4",
+      "name": "点词后仍在 /learn（未误触发换卡/跳转）",
+      "ok": true,
+      "detail": "url=/learn"
+    },
+    {
+      "id": "L5",
+      "name": "「查看详情」跳转到 /word/:word（词库收录的词）",
+      "ok": true,
+      "detail": "url=/word/she"
+    },
+    {
+      "id": "L6",
+      "name": "返回 /learn 学习卡正常恢复（卡片渲染）",
+      "ok": true,
+      "detail": "word=ad"
+    }
+  ]
+}

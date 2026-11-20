@@ -3,7 +3,7 @@
  * ------------------------------------------------------------------
  * 覆盖：
  *   1. validateStudyNotePayload：四要素收敛、坏项丢弃、缺 pos 回退空串、
- *      重复词去重、全空判败、仅有词汇也算通过
+ *      重复词去重、全空判败、仅有词汇也算通过、中文素材形态（中英双译）
  *   2. matchVocabularyContext：命中记 context/segment_start、未命中不硬造、
  *      已有值不动、大小写不敏感
  *   3. generateAndSaveStudyNote（fetch 打桩 SSE）：
@@ -143,6 +143,20 @@ function testValidate(): void {
   assert(validateStudyNotePayload({ summary: '', bilingual_notes: [], key_points: [], vocabulary: [] }) === null, '四要素全空判败')
   const partial = validateStudyNotePayload({ vocabulary: [{ word: 'x', pos: 'noun', gloss: '某' }] })
   assert(partial !== null && partial.summary === '', '仅有词汇也通过（summary 空串）')
+
+  // 中文素材形态（决策 2026-10-22 中英双译）：en=英译、zh=中文原句、
+  // vocabulary 恒空数组——契约与存储不变，方向由 prompt 决定
+  const ZH_NOTE = {
+    summary: '一段中文欢迎词。',
+    bilingual_notes: [{ en: 'Hello, welcome to ShuTree.', zh: '你好，欢迎来到述树。' }],
+    key_points: ['欢迎语的使用场景'],
+    vocabulary: [],
+  }
+  const zhParsed = validateStudyNotePayload(structuredClone(ZH_NOTE))
+  assert(
+    zhParsed !== null && JSON.stringify(zhParsed) === JSON.stringify(ZH_NOTE),
+    '中文素材形态（en 英译/zh 原句/词汇空数组）原样通过',
+  )
 }
 
 /* ------------------------------------------------------------------ */

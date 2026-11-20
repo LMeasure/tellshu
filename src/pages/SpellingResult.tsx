@@ -12,6 +12,9 @@ import {
   type SpellingSession,
   type SpellingWordState,
 } from '@/domain/spellingSession'
+import { loadSessionErrorStats, loadWrongWordBook } from '@/domain/spellingErrorEvents'
+import { STAT_LABELS, type ErrorStats } from '@/domain/spellingErrorStats'
+import type { WrongWordBook } from '@/domain/spellingWrongBook'
 
 /**
  * 单词默写 · 结果页（路由 `/spelling-result?id=<sessionId>`）
@@ -38,6 +41,10 @@ export function SpellingResult() {
   const [session, setSession] = useState<SpellingSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState(false)
+  /** 错词事件统计：两个指标分别标注，读取失败保持 null（不编造数字） */
+  const [errorStats, setErrorStats] = useState<ErrorStats | null>(null)
+  /** 按词合并的错词本（独立于 SRS 错题系统） */
+  const [wrongBook, setWrongBook] = useState<WrongWordBook | null>(null)
 
   const load = useCallback(async () => {
     if (!id) {
@@ -53,6 +60,13 @@ export function SpellingResult() {
       } else {
         setSession(row)
         setMissing(false)
+        // 只读聚合，失败时留 null → 显示「未收录」态，不用假数据兜底
+        const [stats, book] = await Promise.all([
+          loadSessionErrorStats(row.id).catch(() => null),
+          loadWrongWordBook(row.id).catch(() => null),
+        ])
+        setErrorStats(stats)
+        setWrongBook(book)
       }
     } catch {
       setMissing(true)
@@ -135,6 +149,89 @@ export function SpellingResult() {
         </CardBody>
       </Card>
 
+      {/* 错词事件统计：两个指标分别标注，绝不把事件行数写成「拼错次数」。
+          数据为空/读取失败时走空态，不用假数字兜底。 */}
+      <div data-testid="error-stats-section">
+        <div className="mb-2 px-1 text-base font-semibold">错词事件统计</div>
+        {errorStats === null ? (
+          <div className="rounded-lg border border-border/60 bg-card px-3 py-4 text-center text-sm text-muted-foreground" data-testid="stats-unavailable">
+            错词事件统计未收录
+          </div>
+        ) : errorStats.total_error_events === 0 ? (
+          <EmptyState
+            icon={PenLine}
+            title={STAT_LABELS.empty}
+            description="这一轮没有记录到错误事件。"
+          />
+        ) : (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Figure label={STAT_LABELS.active} value={errorStats.active_wrong_count} tone="primary" testId="stat-active" />
+              <Figure label={STAT_LABELS.total} value={errorStats.total_error_events} testId="stat-total" />
+            </div>
+            <div className="space-y-1 rounded-lg border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground">
+              <p>{STAT_LABELS.activeHint}</p>
+              <p>{STAT_LABELS.totalHint}</p>
+              <p>{STAT_LABELS.note}</p>
+              <p data-testid="owner-scope">{STAT_LABELS.ownerScope}</p>
+              {errorStats.by_class.SETTLED_STALE + errorStats.by_class.PENDING_STALE + errorStats.by_class.COVERED > 0 && (
+                <p data-testid="stats-excluded">
+                  {STAT_LABELS.excluded.replace(
+                    '{n}',
+                    String(
+                      errorStats.by_class.SETTLED_STALE +
+                        errorStats.by_class.PENDING_STALE +
+                        errorStats.by_class.COVERED,
+                    ),
+                  )}
+                </p>
+              )}
+              {errorStats.by_class.ORPHAN + errorStats.by_class.UNCLASSIFIABLE > 0 && (
+                <p data-testid="stats-orphan" role="status">
+                  {STAT_LABELS.orphan.replace(
+                    '{n}',
+                    String(errorStats.by_class.ORPHAN + errorStats.by_class.UNCLASSIFIABLE),
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 错词本：按 (owner, word_id) 合并 append-only 事件行，独立于 SRS 错题系统 */}
+      <div data-testid="wrong-book-section">
+        <div className="mb-2 px-1 text-base font-semibold">错词本</div>
+        {wrongBook === null ? (
+          <div className="rounded-lg border border-border/60 bg-card px-3 py-4 text-center text-sm text-muted-foreground">
+            错词本未收录
+          </div>
+        ) : wrongBook.records.length === 0 ? (
+          <EmptyState icon={PenLine} title={STAT_LABELS.empty} description="这一轮没有错词记录。" />
+        ) : (
+          <div className="divide-y divide-border rounded-lg border border-border/60 bg-card">
+            {wrongBook.records.map((r) => (
+              <div key={r.word_id} className="flex items-center gap-3 px-3 py-2.5" data-testid="wrong-book-row">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium" data-testid="wrong-book-word">
+                    {r.word ?? r.word_id}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground" data-testid="wrong-book-count">
+                    活动错词 {r.active_wrong_count} 条 · 历史 {r.total_error_events} 条
+                    {r.last_error_at !== null
+                      ? ` · 最近 ${new Date(r.last_error_at).toLocaleTimeString('zh-CN', { hour12: false })}`
+                      : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="px-3 py-2 text-xs text-muted-foreground" data-testid="wrong-book-owner">
+              {STAT_LABELS.ownerScope}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 逐词明细：直接渲染持久化队列，不另做一套统计 */}
       <div>
         <div className="mb-2 px-1 text-base font-semibold">逐词明细</div>
@@ -177,16 +274,23 @@ function Figure({
   label,
   value,
   tone,
+  testId,
 }: {
   label: string
   value: number | string
   tone?: 'primary'
+  testId?: string
 }) {
   return (
     // 与本页「逐词明细」同一套表面处理（border + bg-card），不另加阴影：
     // 视觉规范以 WordDetail 为样板，卡片不带投影
-    <div className="rounded-lg border border-border/60 bg-card p-3 text-center">
-      <div className={`text-xl font-bold ${tone === 'primary' ? 'text-primary' : ''}`}>{value}</div>
+    <div className="rounded-lg border border-border/60 bg-card p-3 text-center" data-testid={testId}>
+      <div
+        className={`text-xl font-bold ${tone === 'primary' ? 'text-primary' : ''}`}
+        data-testid={testId ? `${testId}-value` : undefined}
+      >
+        {value}
+      </div>
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   )

@@ -1,0 +1,140 @@
+▶ 单词默写 V2 · 逐字母打字状态机回归
+
+▶ 规则 1/2/10 · 一个错误字母 = 一条错词事件（幂等 event_id）
+  ✓ 错误字母判 wrong（期望 wrong，实际 wrong）
+  ✓ 确实落了 1 条新事件（期望 true，实际 true）
+  ✓ 错误提示音已触发（期望 true，实际 true）
+  ✓ 事件表恰 1 行（期望 1，实际 1）
+  ✓ event_id 绑定 request_id（幂等键）（期望 evt:letter:r1，实际 evt:letter:r1）
+  ✓ 复用 v14 kind=wrong，未新增枚举 / stores（期望 wrong，实际 wrong）
+  ✓ 记录错误字母位置（期望 0，实际 0）
+  ✓ 记录输入字符（期望 z，实际 z）
+  ✓ 标记逐字母来源（期望 letter，实际 letter）
+  ✓ 事件同事务直接 settled（期望 settled，实际 settled）
+  ✓ 凭证同事务写入（期望 true，实际 true）
+
+▶ 规则 2 · 同一单词连续错两个字母 = 两条独立事件
+  ✓ 第一个错误字母（期望 wrong，实际 wrong）
+  ✓ 第二个错误字母（期望 wrong，实际 wrong）
+  ✓ 事件表恰 2 行（不是 1 行）（期望 2，实际 2）
+  ✓ 两个独立 event_id（期望 2，实际 2）
+  ✓ 错误提示音触发 2 次（每个错误字母 1 次）（期望 2，实际 2）
+  ✓ 错词本错误次数 = 2（期望 2，实际 2）
+
+▶ 规则 3 · 同词多次错误合并计数、更新最近错误时间
+  ✓ 同一单词合并成 1 条错词记录（不是 3 条）（期望 1，实际 1）
+  ✓ 记录归属正确（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ 词条快照来自事件行，未编造（期望 abandon，实际 abandon）
+  ✓ 错误次数 = 错误字母数 3（期望 3，实际 3）
+  ✓ 历史错误事件行数 = 3（期望 3，实际 3）
+  ✓ 最近错误时间取最大 occurred_at（仅展示）（期望 1700000000900，实际 1700000000900）
+  ✓ 错词本合计 total = 3（期望 3，实际 3）
+
+▶ 规则 3/9 · 不同单词错误互相隔离
+  ✓ 两个词各 1 条错词记录（期望 2，实际 2）
+  ✓ W1 错误次数 = 2（期望 2，实际 2）
+  ✓ W2 错误次数 = 1（未串词）（期望 1，实际 1）
+  ✓ 总行数 = 3（期望 3，实际 3）
+
+▶ 规则 10 · 同一 request_id 重试不重复计数、不重复播音
+  ✓ 首次落 1 行（期望 true，实际 true）
+  ✓ 重放不落第二行（期望 false，实际 false）
+  ✓ 再次重放仍不落行（期望 false，实际 false）
+  ✓ 事件表恒 1 行（期望 1，实际 1）
+  ✓ 重放不重复播放提示音（期望 1，实际 1）
+  ✓ 重放原样回放结果（期望 wrong，实际 wrong）
+  ✓ 错词次数恒 1（期望 1，实际 1）
+  ✓ 无遗留 pending 事件（期望 0，实际 0）
+  ✓ drain 收敛
+
+▶ 规则 5 · 错误后输入进度清零、从第一个字母重新开始
+  ✓ 第 1 个字母后前缀 = a（期望 a，实际 a）
+  ✓ 第 2 个字母后前缀 = ab（期望 ab，实际 ab）
+  ✓ 输入进度已持久化（期望 ab，实际 ab）
+  ✓ 错误后前缀归零（期望 ，实际 ）
+  ✓ 下一个待输入位置回到 0（期望 0，实际 0）
+  ✓ 归零状态已落库（刷新后不回退）（期望 ，实际 ）
+  ✓ 归零后确实从第一个字母重新开始（期望 a，实际 a）
+
+▶ 规则 6 · 错误字母使连续正确次数归零
+  ✓ 前置：连对 = 2（期望 2，实际 2）
+  ✓ 错误后连对归零（期望 0，实际 0）
+  ✓ 归零已落库（期望 0，实际 0）
+  ✓ 错误未增加完整答题提交次数（期望 0，实际 0）
+  ✓ 错误不产生 SRS 交接义务（期望 false，实际 false）
+
+▶ 规则 7/8/9 · 错误不污染 SRS / total_attempts / in_wrong_pool
+  ✓ total_attempts 未被错误字母增加（期望 0，实际 0）
+  ✓ correct_attempts 未变（期望 0，实际 0）
+  ✓ wrong_attempts 未变（错词本独立统计）（期望 0，实际 0）
+  ✓ reviewLog 无新增（SRS 未触发）（期望 0，实际 0）
+  ✓ VocabEntry 连对未变（期望 0，实际 0）
+  ✓ SRS 错题池未被错词事件污染（期望 false，实际 false）
+  ✓ SRS 步进未变（期望 0，实际 0）
+  ✓ 错词本独立记录 2 次错误（期望 2，实际 2）
+
+▶ 规则 4 · 错误提示音按错误字母逐个触发
+  ✓ 初始 0 次（期望 0，实际 0）
+  ✓ 正确字母不播音（期望 0，实际 0）
+  ✓ 第 1 个错误字母播音 1 次（期望 1，实际 1）
+  ✓ 第 2 个错误字母再播 1 次（期望 2，实际 2）
+  ✓ 提示音次数与错误事件数一致（期望 2，实际 2）
+
+▶ 规则 10 · 拼完整个词才算一次完整提交，达标才完成并切换
+  ✓ 第 1 个字母只是进度，未完成（期望 correct，实际 correct）
+  ✓ 单个字母不是完整答题提交（期望 false，实际 false）
+  ✓ 拼完整个词 = 一次完整答题提交（期望 true，实际 true）
+  ✓ 连对 = 1（目标 2，未完成）（期望 1，实际 1）
+  ✓ 未达标不完成（期望 IN_PROGRESS，实际 IN_PROGRESS）
+  ✓ 仍停在当前词（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ 完整答题提交次数 = 1（期望 1，实际 1）
+  ✓ 连对 = 2 达标（期望 2，实际 2）
+  ✓ 整词完成（期望 COMPLETED，实际 COMPLETED）
+  ✓ 触发切词（期望 word_completed，实际 word_completed）
+  ✓ 已切换到下一个词（期望 CET4:ability，实际 CET4:ability）
+  ✓ 整词达标产生 SRS 交接义务（非错误事件触发）（期望 true，实际 true）
+  ✓ 全程正确 → 0 条错词事件（期望 0，实际 0）
+
+▶ 规则 10 · Dexie / memory 双驱动状态机结果一致
+  ✓ 两驱动 4 次逐字母结果逐项一致（期望 [{"request_id":"j1","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j2","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"ab","letter_index":2,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j3","word_id":"CET4:abandon","at":1700000000000,"outcome":"wrong","typed_prefix":"","letter_index":0,"is_full_attempt":false,"srs_due":false,"error":{"event_id":"evt:letter:j3","word_id":"CET4:abandon","session_id":"s11","word_snapshot":"abandon","letter_index":2,"typed_char":"z","expected_char":"a","occurred_at":1700000000000},"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j4","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}}]，实际 [{"request_id":"j1","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j2","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"ab","letter_index":2,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j3","word_id":"CET4:abandon","at":1700000000000,"outcome":"wrong","typed_prefix":"","letter_index":0,"is_full_attempt":false,"srs_due":false,"error":{"event_id":"evt:letter:j3","word_id":"CET4:abandon","session_id":"s11","word_snapshot":"abandon","letter_index":2,"typed_char":"z","expected_char":"a","occurred_at":1700000000000},"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}},{"request_id":"j4","word_id":"CET4:abandon","at":1700000000000,"outcome":"correct","typed_prefix":"a","letter_index":1,"is_full_attempt":false,"srs_due":false,"word_length":7,"word_status":"IN_PROGRESS","session_status":"IN_PROGRESS","consecutive_correct":0,"target_correct":3,"total_attempts":0,"correct_attempts":0,"wrong_attempts":0,"next_word_id":"CET4:abandon","progress":{"completed":0,"skipped":0,"unavailable":0,"total":1}}]）
+  ✓ 两驱动都判第 3 个字母为错误（期望 wrong，实际 wrong）
+  ✓ 两驱动错误后都从第一个字母重新开始（期望 a，实际 a）
+  ✓ Dexie 路径 1 条事件（期望 1，实际 1）
+  ✓ memory 驱动未被误写入（隔离）（期望 0，实际 0）
+
+▶ 回归 · 双标签竞争、U16 恢复、drain 幂等与事件隔离
+  ✓ 接管后旧标签写入被明确拒绝（期望 1，实际 1）
+  ✓ 旧标签零事件落盘（期望 1，实际 1）
+  ✓ 他人持锁且租约未过期时，恢复链明确拒绝（不假报恢复成功）（期望 1，实际 1）
+  ✓ 租约过期接管后 U16 恢复链收敛
+  ✓ 恢复链确实重新取得写锁（重新 open ≠ 已持锁）
+  ✓ 生产逐字母路径不产生 pending 事件（期望 0，实际 0）
+  ✓ 重复 drain 仍收敛
+  ✓ 恢复 / drain 后事件行数不变（期望 1，实际 1）
+
+▶ 规则 2 · 每个错误字母对应正确的错词统计（两指标分别标注）
+  ✓ 活动错词事件数 = 3（错误字母数）（期望 3，实际 3）
+  ✓ 历史错误事件行数 = 3（期望 3，实际 3）
+  ✓ 合计 active = 3（期望 3，实际 3）
+  ✓ 合计 total = 3（期望 3，实际 3）
+  ✓ 两个指标分别标注
+  ✓ 活动指标不含主观「拼错次数」
+  ✓ 历史指标不含主观「拼错次数」
+  ✓ 口径说明写明逐字母累计
+
+▶ 规则 9 · 不污染其他会话 / 其他 owner 的错词数据
+  ✓ owner 取自会话文档（期望 guest，实际 guest）
+  ✓ 只统计本会话本账号的 1 条（期望 1，实际 1）
+  ✓ active 也只算 1 条（期望 1，实际 1）
+  ✓ 会话 B 独立统计（期望 1，实际 1）
+  ✓ 会话 B 记录不被 A 覆盖（期望 CET4:abandon，实际 CET4:abandon）
+  ✓ 纯聚合按 owner 过滤后只剩 2 条 guest 事件（期望 2，实际 2）
+  ✓ 按 word_id 合并成 1 条记录（期望 1，实际 1）
+
+▶ 兼容 · V1 整词提交 API 未被 V2 改造破坏
+  ✓ V1 整词判定仍返回 wrong（期望 wrong，实际 wrong）
+  ✓ V1 整词错误仍为 1 条事件（兼容）（期望 1，实际 1）
+  ✓ V1 完整答题计数未变（期望 1，实际 1）
+
+────────────────────────────────────────────────────────────────
+✅ V2 逐字母状态机全部通过：106 项断言
