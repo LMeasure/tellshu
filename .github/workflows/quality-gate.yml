@@ -1,0 +1,38 @@
+# 合并前四件套。PWA 项固定用 python3，不依赖 PATH 上的 python，也不安装 python-is-python3。
+# 十项体检就是 scripts/check_pwa.py 现有逻辑，本工作流不放宽。
+name: quality-gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  official-gate:
+    name: official four-command gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: PWA check
+        run: python3 scripts/check_pwa.py
