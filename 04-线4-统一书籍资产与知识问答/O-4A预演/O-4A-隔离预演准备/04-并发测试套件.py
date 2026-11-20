@@ -12,8 +12,18 @@ O-4A 第十轮 · 确定性并发测试套件（SQL-A~E / TRG-01 六通道推进
     官方 advanced/async 文档：LISTEN/NOTIFY 需 autocommit 连接，且 "Before 3.2.4,
     notification received between calling LISTEN and starting the generator were lost"。
     ⇒ 本套件要求 psycopg >= 3.2.4（推荐 3.2.10+），启动即校验版本。
-  * 通知仅作「唤醒提示」，屏障真值在持久化表 rehearsal_barriers；notifies(timeout)
-    超时是「通知丢失安全兜底」，超时后重读真值表，绝不使用 time.sleep 猜时序。
+  * 通知仅作「唤醒提示」，屏障真值在持久化表 rehearsal_barriers。
+    官方签名是 Connection.notifies(*, timeout=..., stop_after=...)，返回生成器；
+    生成器本身不可调用。timeout 到期生成器结束（不抛异常），随后重读真值表。
+    绝不使用 time.sleep 猜时序。3.2.4+ 在生成器未运行时把通知留在连接积压里，
+    下一次 notifies() 会先吐出积压，因此不必、也不能握着一个长期生成器再去调用它。
+
+【并发模型】带 barrier 的场景用 ThreadPoolExecutor，max_workers=会话数，
+  一会话一线程，且监听连接与业务连接都在该线程内创建（psycopg 连接不跨线程共享）。
+  这样 arrive() 与业务 SQL 真正重叠；无 barrier 的场景保持顺序执行（串行语义）。
+  业务事务在语句结束后、COMMIT 前停住，直到监控侧看见锁等待图
+  （已有语句结束者，且其余会话都在等锁）或全部语句都已结束。放行用 threading.Event，
+  不用 sleep。
 
 【确定性屏障状态机】listener_ready → participant_arrived → barrier_released
   → participant_completed（详见 04c-屏障状态机与失败处理设计.md）。
@@ -34,8 +44,10 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any, Callable, List, Optional
@@ -220,8 +232,13 @@ class Barrier:
                 "AND %s='participant_completed'", (self.name, event))
         conn.commit()
 
-    def _await(self, listener, gen, predicate, deadline_s: float) -> int:
-        """真值在 DB（predicate），通知仅唤醒；超时兜底计数，绝不 sleep 猜时序。"""
+    def _await(self, listener, predicate, deadline_s: float) -> int:
+        """真值在 DB（predicate），通知仅唤醒；超时兜底计数，绝不 sleep 猜时序。
+
+        psycopg 3.2+：timeout / stop_after 是 Connection.notifies() 的关键字参数，
+        返回的生成器不可调用。一轮生成器必须耗尽后再使用同一连接做查询
+        （生成器存活期间连接锁被占用）。超时只是生成器结束，不是异常。
+        """
         deadline = time.monotonic() + deadline_s
         missed = 0
         while True:
@@ -231,21 +248,24 @@ class Barrier:
             if remaining <= 0:
                 raise TimeoutError(f"barrier {self.name} wait timeout")
             woke = False
-            try:
-                for _n in gen(timeout=min(NOTIFY_TIMEOUT, remaining), stop_after=1):
-                    woke = True
-                    break
-            except Exception:  # noqa
-                woke = False
+            for _note in listener.notifies(
+                timeout=min(NOTIFY_TIMEOUT, remaining),
+                stop_after=1,
+            ):
+                woke = True
             if not woke:
-                missed += 1  # 通知丢失/延迟：靠重读真值兜底，记录证据
+                missed += 1  # 这一轮没有通知：重读真值表，丢失次数留证据
 
-    def listener(self, dsns: dict[str, str], role: str):
-        """建立 autocommit 监听连接并登记 listener_ready；返回 (conn, notifier, missed)。"""
+    def open_listener(self, dsns: dict[str, str], role: str):
+        """在调用线程内建立 autocommit 监听连接并登记 listener_ready。
+
+        不在这里启动 notifies() 生成器。3.2.4+ 会把 LISTEN 之后、生成器启动前
+        到达的通知留在连接积压中，由随后的 _await 一次取走。
+        返回 (conn, listener_pid)。连接不得交给其他线程。
+        """
         conn = connect_role(dsns, role, autocommit=True)
         conn.execute("LISTEN " + self.ready_ch)
         conn.execute("LISTEN " + self.release_ch)
-        gen = conn.notifies()  # 立即启动生成器（3.2.4+ 捕获 LISTEN 后通知）
         with conn.cursor() as cur:
             cur.execute("SELECT pg_backend_pid()")
             pid = cur.fetchone()[0]
@@ -258,14 +278,16 @@ class Barrier:
             n = cur.fetchone()[0]
         if n == self.total:
             conn.execute("NOTIFY " + self.ready_ch)
-        return conn, gen, gen, pid, n
+        return conn, pid
 
-    def wait_listeners(self, admin_conn, conn, gen) -> int:
-        return self._await(conn, gen,
-                           lambda: self._count(admin_conn, "listeners_ready") >= self.total,
-                           BARRIER_DEADLINE)
+    def wait_listeners(self, conn) -> int:
+        return self._await(
+            conn,
+            lambda: self._count(conn, "listeners_ready") >= self.total,
+            BARRIER_DEADLINE,
+        )
 
-    def arrive(self, admin_conn, conn, gen, pid: int, role: str) -> int:
+    def arrive(self, conn, pid: int, role: str) -> int:
         """登记到达；最后到达者置 released 并 NOTIFY（此时全部 listener 已就绪）。"""
         with conn.cursor() as cur:
             cur.execute(
@@ -282,9 +304,11 @@ class Barrier:
                     (self.name,))
             conn.execute("NOTIFY " + self.release_ch)
             return 0
-        return self._await(conn, gen,
-                           lambda: self._flag(admin_conn, "released"),
-                           BARRIER_DEADLINE)
+        return self._await(
+            conn,
+            lambda: self._flag(conn, "released"),
+            BARRIER_DEADLINE,
+        )
 
     def complete(self, conn, pid: int, role: str):
         with conn.cursor() as cur:
@@ -635,6 +659,277 @@ SCENARIOS: List[ScenarioDef] = [
 # ---------------------------------------------------------------------------
 # 执行器
 # ---------------------------------------------------------------------------
+class OverlapGate:
+    """屏障会话的进程内会合。提交被推迟到监控侧看见锁等待图。
+
+    唤醒只用 threading.Event（状态变化或安全期限），不用 time.sleep。
+    """
+
+    def __init__(self, n: int):
+        self.n = n
+        self._lock = threading.Lock()
+        self._pids: list[int] = []
+        self._stmt_done = 0
+        self.pids_ready = threading.Event()
+        self.release = threading.Event()
+        self.failed = threading.Event()
+        self.wake = threading.Event()
+
+    def publish_pid(self, pid: int) -> None:
+        with self._lock:
+            self._pids.append(pid)
+            ready = len(self._pids) >= self.n
+        if ready:
+            self.pids_ready.set()
+        self.wake.set()
+
+    def mark_stmt_done(self) -> None:
+        with self._lock:
+            self._stmt_done += 1
+        self.wake.set()
+
+    def mark_failed(self) -> None:
+        self.failed.set()
+        self.wake.set()
+
+    def snapshot(self) -> tuple[list[int], int]:
+        with self._lock:
+            return list(self._pids), self._stmt_done
+
+
+def _overlap_stable(done: int, waiting: int, n: int) -> bool:
+    """可以放行 COMMIT 的锁图：全部语句已结束，或已有结束者且其余都在等锁。"""
+    if n <= 0 or done >= n:
+        return True
+    return done >= 1 and (waiting + done) >= n
+
+
+def _fill_identity(conn, sr: SessionResult) -> None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT pg_backend_pid()")
+        sr.backend_pid = cur.fetchone()[0]
+        try:
+            cur.execute("SELECT pg_current_xact_id()::text")
+            sr.txid = cur.fetchone()[0]
+        except Exception:
+            sr.txid = "unassigned"  # 纯 SELECT 场景可能未分配
+
+
+def _drive_sql(conn, plan: SessionPlan, sr: SessionResult, hold_commit: bool) -> str:
+    """执行计划语句。成功且 hold_commit 时不提交，返回 HOLD，让锁保持到采样完成。
+
+    返回 DONE（已 COMMIT，或预期 SQLSTATE 已 ROLLBACK）、FAIL（不该成功却成功）、HOLD。
+    非预期数据库错误向上抛，由调用方记 ABORT。
+    """
+    for sql, params in zip(plan.sql, plan.params):
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+            sr.sql_log.append({"sql": sql, "ok": True})
+        except Exception as e:  # noqa
+            state = getattr(e, "sqlstate", "UNKNOWN")
+            sr.sqlstates.append(state)
+            sr.sql_log.append({"sql": sql, "ok": False, "sqlstate": state})
+            if plan.expect_sqlstate and state == plan.expect_sqlstate:
+                conn.rollback()
+                sr.outcome = f"ROLLBACK({state})"
+                return "DONE"
+            raise
+    if not plan.expect_sqlstate:
+        if hold_commit:
+            return "HOLD"
+        conn.commit()
+        sr.outcome = "COMMIT"
+        return "DONE"
+    conn.rollback()
+    sr.outcome = "ROLLBACK(unexpected_success)"
+    return "FAIL"
+
+
+def _run_sequential(dsns, plans, monitor, ev: Evidence) -> str:
+    """无屏障场景：保持语句顺序（串行语义）。连接只在本线程使用。"""
+    verdict_state = S_PASS
+    biz: list = []
+    try:
+        for p in plans:
+            sr = SessionResult(label=p.label, role=p.role)
+            conn = connect_role(dsns, p.role, autocommit=False)
+            biz.append(conn)
+            _fill_identity(conn, sr)
+            pids = [s.backend_pid for s in ev.sessions] + [sr.backend_pid]
+            ev.lock_wait_evidence.extend(sample_locks(monitor, pids))
+            try:
+                if _drive_sql(conn, p, sr, hold_commit=False) == "FAIL":
+                    verdict_state = S_FAIL
+            except Exception as e:  # noqa
+                state = getattr(e, "sqlstate", "ABORT")
+                sr.sqlstates.append(state)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                sr.outcome = f"ABORT({state})"
+                verdict_state = S_ABORT
+            ev.sessions.append(sr)
+    finally:
+        for c in biz:
+            try:
+                c.close()
+            except Exception:
+                pass
+    return verdict_state
+
+
+def _wait_pids(gate: OverlapGate, deadline: float) -> bool:
+    """等到每个线程都公布了 backend pid，或有线程失败，或到达安全期限。"""
+    while time.monotonic() < deadline:
+        if gate.pids_ready.is_set():
+            return True
+        if gate.failed.is_set():
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        gate.wake.clear()
+        if gate.pids_ready.is_set() or gate.failed.is_set():
+            continue
+        gate.wake.wait(timeout=remaining)
+    return gate.pids_ready.is_set()
+
+
+def _observe_overlap(monitor, gate: OverlapGate, ev: Evidence) -> bool:
+    """在提交前采样未授予锁。返回 True 表示观察窗超时。
+
+    阻塞中的业务后端不会再执行 Python，所以锁图只能靠查询 pg_locks 直到
+    _overlap_stable，而不是 sleep 猜一个时刻。查询在条件成立时立刻停止。
+    """
+    deadline = time.monotonic() + BARRIER_DEADLINE
+    if not _wait_pids(gate, deadline):
+        pids, _done = gate.snapshot()
+        if pids:
+            ev.lock_wait_evidence.extend(sample_locks(monitor, pids))
+        return True
+    while time.monotonic() < deadline:
+        pids, done = gate.snapshot()
+        locks = sample_locks(monitor, pids)
+        waiting = {row["pid"] for row in locks}
+        if _overlap_stable(done, len(waiting), len(pids)):
+            ev.lock_wait_evidence.extend(locks)
+            return False
+        if gate.failed.is_set():
+            ev.lock_wait_evidence.extend(locks)
+            return False
+    pids, _done = gate.snapshot()
+    ev.lock_wait_evidence.extend(sample_locks(monitor, pids))
+    return True
+
+
+def _barrier_worker(dsns, plan: SessionPlan, bar: Optional[Barrier], gate: OverlapGate):
+    """一个屏障会话。连接在本线程创建。返回 (SessionResult, notify_missed, error, fail)。"""
+    sr = SessionResult(label=plan.label, role=plan.role)
+    missed = 0
+    lconn = None
+    bconn = None
+    fail = False
+    try:
+        lpid = -1
+        if bar is not None:
+            lconn, lpid = bar.open_listener(dsns, plan.role)
+            missed += bar.wait_listeners(lconn)
+        bconn = connect_role(dsns, plan.role, autocommit=False)
+        _fill_identity(bconn, sr)
+        gate.publish_pid(sr.backend_pid)
+        if bar is not None:
+            missed += bar.arrive(lconn, lpid, plan.role)
+        hint = _drive_sql(bconn, plan, sr, hold_commit=bar is not None)
+        if hint == "HOLD":
+            if bar is None or lconn is None:
+                raise RuntimeError("sample hold requires a barrier listener")
+            # 语句已结束但仍持有行锁。等到监控侧看见等待图再 COMMIT。
+            gate.mark_stmt_done()
+            if not gate.release.wait(timeout=BARRIER_DEADLINE):
+                raise TimeoutError(f"barrier {bar.name} sample hold timeout")
+            bconn.commit()
+            sr.outcome = "COMMIT"
+            bar.complete(lconn, lpid, plan.role)
+        elif hint == "FAIL":
+            fail = True
+            gate.mark_failed()
+        else:
+            gate.mark_stmt_done()
+            if bar is not None and sr.outcome.startswith("ROLLBACK"):
+                bar.complete(lconn, lpid, plan.role)
+        return sr, missed, None, fail
+    except TimeoutError as e:
+        gate.mark_failed()
+        if bconn is not None:
+            try:
+                bconn.rollback()
+            except Exception:
+                pass
+        if not sr.outcome:
+            sr.outcome = "ABORT(TIMEOUT)"
+        return sr, missed, e, False
+    except Exception as e:  # noqa
+        gate.mark_failed()
+        state = getattr(e, "sqlstate", "ABORT")
+        if state not in sr.sqlstates:
+            sr.sqlstates.append(state)
+        if bconn is not None:
+            try:
+                bconn.rollback()
+            except Exception:
+                pass
+        if not sr.outcome:
+            sr.outcome = f"ABORT({state})"
+        return sr, missed, e, False
+    finally:
+        for c in (bconn, lconn):
+            if c is not None:
+                try:
+                    c.close()
+                except Exception:
+                    pass
+
+
+def _run_overlapping(dsns, plans, barriers, monitor, ev: Evidence) -> str:
+    """屏障场景：每会话一个线程，arrive 与业务 SQL 重叠。max_workers 必须等于会话数，
+    否则后启动的参与者进不了屏障，先到者会一直等到 BARRIER_DEADLINE。
+    """
+    gate = OverlapGate(len(plans))
+    results = []
+    timed_out = False
+    with ThreadPoolExecutor(max_workers=len(plans)) as pool:
+        futs = [
+            pool.submit(_barrier_worker, dsns, p, barriers.get(p.barrier), gate)
+            for p in plans
+        ]
+        try:
+            timed_out = _observe_overlap(monitor, gate, ev)
+        finally:
+            # 先放行再取结果，避免持锁线程停在 release.wait、本线程停在 future。
+            gate.release.set()
+        for fut in futs:
+            results.append(fut.result())
+    verdict_state = S_PASS
+    saw_timeout = timed_out
+    saw_error = False
+    for sr, missed, err, fail in results:
+        ev.sessions.append(sr)
+        ev.notify_missed += missed
+        if isinstance(err, TimeoutError):
+            saw_timeout = True
+        elif err is not None:
+            saw_error = True
+        elif fail:
+            verdict_state = S_FAIL
+    if saw_timeout:
+        return S_TIMEOUT
+    if saw_error:
+        return S_ABORT
+    return verdict_state
+
+
 def run_scenario(dsns, sc: ScenarioDef, run_dir: str, run_id: str):
     ctx = ScenarioCtx(uuid.uuid4(), uuid.uuid4(), f"key_{uuid.uuid4().hex[:8]}")
     ev = Evidence(run_id=run_id, test_id=sc.test_id, purpose=sc.purpose,
@@ -671,111 +966,31 @@ def run_scenario(dsns, sc: ScenarioDef, run_dir: str, run_id: str):
     for b, bar in barriers.items():
         bar.setup(admin)
 
-    listener_conns: list = []
-    biz_conns: list = []
     verdict_state = S_PASS
     try:
-        # ---- 阶段1：所有参与者建立 LISTEN 并登记 listener_ready；协调侧等齐 ----
-        listeners = []
-        for p in plans:
-            bar = barriers.get(p.barrier) if p.barrier else None
-            if bar:
-                lconn, notifier, gen, pid, n = bar.listener(dsns, p.role)
-                listener_conns.append(lconn)
-                listeners.append((p, bar, lconn, gen, pid))
-        for _p, bar, lconn, gen, _pid in listeners:
-            ev.notify_missed += bar.wait_listeners(admin, lconn, gen)
+        if barriers:
+            # 阶段 1+2 都在各会话线程里：先 LISTEN 并等 listeners_ready，再 arrive，再重叠执行 SQL。
+            verdict_state = _run_overlapping(dsns, plans, barriers, monitor, ev)
+        else:
+            verdict_state = _run_sequential(dsns, plans, monitor, ev)
 
-        # ---- 阶段2：各会话执行业务 SQL ----
-        for idx, p in enumerate(plans):
-            sr = SessionResult(label=p.label, role=p.role)
-            conn = connect_role(dsns, p.role, autocommit=False)
-            biz_conns.append(conn)
-            with conn.cursor() as cur:
-                cur.execute("SELECT pg_backend_pid()")
-                sr.backend_pid = cur.fetchone()[0]
-                try:
-                    cur.execute("SELECT pg_current_xact_id()::text")
-                    sr.txid = cur.fetchone()[0]
-                except Exception:
-                    sr.txid = "unassigned"  # 纯 SELECT 场景可能未分配
-
-            # 到达屏障（提交前）
-            pids = [s.backend_pid for s in ev.sessions] + [sr.backend_pid]
-            for _pp, bar, lconn, gen, pid in listeners:
-                if _pp is p:
-                    ev.notify_missed += bar.arrive(admin, lconn, gen, pid, p.role)
-
-            # 锁等待采样（提交前，monitor 独立连接）
-            ev.lock_wait_evidence.extend(sample_locks(monitor, pids))
-
-            try:
-                for sql, params in zip(p.sql, p.params):
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute(sql, params)
-                        sr.sql_log.append({"sql": sql, "ok": True})
-                    except Exception as e:  # noqa
-                        state = getattr(e, "sqlstate", "UNKNOWN")
-                        sr.sqlstates.append(state)
-                        sr.sql_log.append({"sql": sql, "ok": False, "sqlstate": state})
-                        if p.expect_sqlstate and state == p.expect_sqlstate:
-                            conn.rollback()
-                            sr.outcome = f"ROLLBACK({state})"
-                            break
-                        raise
-                if not p.expect_sqlstate:
-                    conn.commit()
-                    sr.outcome = "COMMIT"
-                elif not sr.outcome:
-                    conn.rollback()
-                    sr.outcome = "ROLLBACK(unexpected_success)"
-                    verdict_state = S_FAIL
-            except Exception as e:  # noqa
-                state = getattr(e, "sqlstate", "ABORT")
-                sr.sqlstates.append(state)
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                sr.outcome = f"ABORT({state})"
-                verdict_state = S_ABORT
-            ev.sessions.append(sr)
-
-            # 完成阶段
-            for _pp, bar, lconn, gen, pid in listeners:
-                if _pp is p and not (verdict_state in (S_ABORT,)):
-                    bar.complete(lconn, pid, p.role)
-
-        # 等待所有 completed（协调侧，真值在表）
-        for _p, bar, lconn, gen, _pid in listeners:
-            try:
-                ev.notify_missed += bar._await(
-                    lconn, gen,
-                    lambda b=bar: b._count(admin, "completed") >= b.total,
-                    BARRIER_DEADLINE)
-            except TimeoutError:
-                verdict_state = S_TIMEOUT
-
-        # 屏障事件落证据
-        with admin.cursor() as cur:
-            cur.execute(
-                "SELECT name,pid,role,event,at FROM shutree_sec.rehearsal_barrier_events ORDER BY id")
-            ev.barrier_events = [
-                {"name": r[0], "pid": r[1], "role": r[2], "event": r[3], "at": str(r[4])}
-                for r in cur.fetchall()]
-
+        if barriers:
+            with admin.cursor() as cur:
+                cur.execute(
+                    "SELECT name,pid,role,event,at FROM shutree_sec.rehearsal_barrier_events ORDER BY id")
+                ev.barrier_events = [
+                    {"name": r[0], "pid": r[1], "role": r[2], "event": r[3], "at": str(r[4])}
+                    for r in cur.fetchall()]
+            # 线程都已返回后，completed 仍不足就是超时（不再空等一轮 deadline）。
+            for bar in barriers.values():
+                if bar._count(admin, "completed") < bar.total and verdict_state == S_PASS:
+                    verdict_state = S_TIMEOUT
     except TimeoutError:
         verdict_state = S_TIMEOUT
     except Exception as e:  # noqa
         verdict_state = S_ABORT
         ev.sqlstates = getattr(e, "sqlstate", "ABORT")
     finally:
-        for c in biz_conns + listener_conns:
-            try:
-                c.close()
-            except Exception:
-                pass
         for c in (monitor, admin):
             try:
                 c.close()
