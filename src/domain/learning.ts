@@ -340,6 +340,7 @@ export async function saveReading(input: {
     source_site: input.source_site ?? prev?.source_site,
     source_id: input.source_id ?? prev?.source_id,
     author: input.author ?? prev?.author,
+    owner: prev?.owner ?? 'guest',
   }
   await T.readings.put(doc)
   return doc
@@ -509,6 +510,7 @@ export async function addAnnotation(input: {
     ...input,
     created_at: now,
     updated_at: now,
+    owner: 'guest',
   }
   await T.annotations.put(row)
   return row
@@ -559,9 +561,13 @@ export async function addReadingTime(seconds: number): Promise<void> {
   const date = todayStr()
   const row = await T.readingTime.get(date)
   if (row) {
-    await T.readingTime.put({ date, total_seconds: row.total_seconds + seconds })
+    await T.readingTime.put({
+      ...row,
+      total_seconds: row.total_seconds + seconds,
+      owner: row.owner ?? 'guest',
+    })
   } else {
-    await T.readingTime.put({ date, total_seconds: seconds })
+    await T.readingTime.put({ date, total_seconds: seconds, owner: 'guest' })
   }
 }
 
@@ -579,9 +585,15 @@ export async function addDictationTime(seconds: number): Promise<void> {
     await T.readingTime.put({
       ...row,
       dictation_seconds: (row.dictation_seconds ?? 0) + seconds,
+      owner: row.owner ?? 'guest',
     })
   } else {
-    await T.readingTime.put({ date, total_seconds: 0, dictation_seconds: seconds })
+    await T.readingTime.put({
+      date,
+      total_seconds: 0,
+      dictation_seconds: seconds,
+      owner: 'guest',
+    })
   }
 }
 
@@ -760,6 +772,7 @@ export async function addRecitation(input: {
     media_type: input.media_type,
     created_at: now,
     blob: input.blob,
+    owner: 'guest',
   }
   await T.recitations.put(row)
   return row

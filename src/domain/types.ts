@@ -107,6 +107,8 @@ export interface ReadingAnnotation {
   author?: string
   created_at: number
   updated_at: number
+  /** 多端隔离（v12 已索引；新写入缺省 'guest'） */
+  owner?: string
 }
 
 /** 导入并本地保存的阅读素材（文章/书籍/音频，见 06 §7.1） */
@@ -158,6 +160,8 @@ export interface ReadingDoc {
    * 非索引字段，随对象整体存储，不需 Dexie 升版本。
    */
   segments?: TranscriptSegment[]
+  /** 多端隔离（v12 已索引；新写入缺省 'guest'，覆盖保存保留原值） */
+  owner?: string
 }
 
 /** 学习时长按日累计（计入个人中心可视化，见 06 §7.3） */
@@ -208,6 +212,8 @@ export interface Recitation {
   media_type: string
   created_at: number
   blob: Blob
+  /** 多端隔离（v12 已索引；新写入缺省 'guest'） */
+  owner?: string
 }
 
 /** 一次诊断的结果（个人中心展示当前等级与历史） */
