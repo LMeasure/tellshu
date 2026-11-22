@@ -81,6 +81,7 @@ import {
   type ReadingAnnotation,
   type ReadingDoc,
 } from '@/domain/learning'
+import { MaterialShelfButton } from '@/components/import/MaterialShelfButton'
 import { useAppStore, type ReaderPrefs } from '@/store/useAppStore'
 import type { AnnotationColor, AnnotationStyle } from '@/domain/types'
 import type { ContentWord } from '@/data/types'
@@ -1281,7 +1282,7 @@ export function Reader() {
     >
       {pageBookmark && <BookmarkRibbon animate={ribbonAnim} />}
 
-      {/* 顶栏（常驻）：返回 / 标题 / 编辑 / 听书快捷 / 停止 / 倒计时 */}
+      {/* 顶栏（常驻）：返回 / 标题 / 书籍加入书架 / 编辑 / 听书快捷 / 停止 / 倒计时 */}
       <header className="safe-top shrink-0 border-b border-border/60 bg-card/60 px-3 py-2 backdrop-blur">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -1308,6 +1309,15 @@ export function Reader() {
               {chapters.length > 0 ? ` · ${chapters.length} 章` : ''} · 第 {page + 1}/{pages.length} 页
             </div>
           </div>
+          {/* 仅书籍可加入/移出书架；文章、字幕、音频由 MaterialShelfButton 直接不渲染 */}
+          <MaterialShelfButton
+            doc={doc}
+            onChanged={() => {
+              void getReading(doc.id).then((fresh) => {
+                if (fresh) setDoc(fresh)
+              })
+            }}
+          />
           {/* 仅「文章」可编辑：导入的书籍（TXT/EPUB）不支持编辑原文 */}
           {doc.type === 'article' && (
             <IconAction label="编辑原文" onClick={handleEdit}>
