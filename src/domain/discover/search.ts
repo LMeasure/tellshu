@@ -11,9 +11,11 @@
  *   500/502/504 与网络错误重试——共 3 次尝试（首次 + 2 次重试，退避 400ms×n）。
  *
  * 契约校验（红线：坏数据不进 UI）：results 必须是数组、每项必须带
- * title/content/score 且 score 是有限数；meta.returned 必须等于
- * results.length。任何一条不符 → bad_response，页面走错误态，
- * 绝不用半截数据渲染卡片。
+ * title/content/score 且 score 是有限数；每项 book_id 必须是
+ * trim 后非空的字符串（缺省、null、undefined、空串、纯空白 → bad_response，
+ * 不进入 toBookHit，也不能被拼成 discovered:gutenberg:undefined 这类主键）；
+ * meta.returned 必须等于 results.length。任何一条不符 → bad_response，
+ * 页面走错误态，绝不用半截数据渲染卡片。
  */
 
 import {
@@ -29,9 +31,18 @@ import { ApiRequestError } from '@/data/asrClient'
  */
 export const DISCOVER_SOURCE_SITE = 'gutenberg'
 
+/**
+ * 入架 source_id 闸门。book_id 必须是 trim 后非空的字符串。
+ * 缺省、null、undefined、空串、纯空白、以及非字符串一律拒绝，
+ * 避免在调用 discoveredDocId 之前拼出 discovered:gutenberg:undefined / null。
+ */
+export function isShelfableBookId(bookId: unknown): bookId is string {
+  return typeof bookId === 'string' && bookId.trim() !== ''
+}
+
 /** UI 友好的检索命中（snake_case → camelCase 在域层一次做完） */
 export interface BookHit {
-  /** /api/discover 的 book_id；入架时作为 source_id 快照 */
+  /** /api/discover 的 book_id；入架时作为 source_id 快照。契约上为 trim 后非空字符串。 */
   bookId: string
   /** /api/discover 的 chunk_id（片段标识，入架按书不按片段） */
   chunkId: number
@@ -104,6 +115,10 @@ function validateResponse(body: DiscoverResponse): void {
     }
     if (typeof item?.score !== 'number' || !Number.isFinite(item.score)) {
       throw new BookSearchError('bad_response', '检索响应存在非法 score')
+    }
+    // 在 toBookHit 之前拒绝。坏 id 不得进入映射，也不得进入入架。
+    if (!isShelfableBookId(item?.book_id)) {
+      throw new BookSearchError('bad_response', '检索响应存在缺少或空白 book_id 的结果项')
     }
   }
   if (typeof body.meta?.returned !== 'number' || body.meta.returned !== body.results.length) {

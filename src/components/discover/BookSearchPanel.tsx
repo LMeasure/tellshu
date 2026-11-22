@@ -8,6 +8,7 @@ import { OfflineNotice } from '@/components/OfflineNotice'
 import { useOnline } from '@/lib/offline'
 import {
   DISCOVER_SOURCE_SITE,
+  isShelfableBookId,
   searchBooks,
   BookSearchError,
   type BookHit,
@@ -113,7 +114,9 @@ export function BookSearchPanel() {
   useEffect(() => {
     if (phase.kind !== 'done') return
     let alive = true
-    const ids = [...new Set(phase.hits.map((h) => h.bookId).filter((id) => id !== ''))]
+    const ids = [
+      ...new Set(phase.hits.map((h) => h.bookId).filter((id) => isShelfableBookId(id))),
+    ]
     void Promise.all(
       ids.map(async (bookId) => ((await isBookShelved(DISCOVER_SOURCE_SITE, bookId)) ? bookId : null)),
     )
@@ -139,25 +142,28 @@ export function BookSearchPanel() {
   }
 
   async function onShelve(hit: BookHit) {
-    if (hit.bookId === '' || shelved.has(hit.bookId) || shelvePendingRef.current.has(hit.bookId)) return
-    shelvePendingRef.current.add(hit.bookId)
+    // 不只拒绝 ''。非字符串、null/undefined、空串、纯空白都不进入入架。
+    const bookId = hit.bookId
+    if (!isShelfableBookId(bookId)) return
+    if (shelved.has(bookId) || shelvePendingRef.current.has(bookId)) return
+    shelvePendingRef.current.add(bookId)
     try {
       await shelveDiscoveredBook({
         title: hit.title,
         author: hit.author,
         source_site: DISCOVER_SOURCE_SITE,
-        source_id: hit.bookId,
+        source_id: bookId,
       })
       setShelved((prev) => {
         const next = new Set(prev)
-        next.add(hit.bookId)
+        next.add(bookId)
         return next
       })
       showToast('已加入书架，可在首页书架查看（正文待接入）')
     } catch {
       showToast('加入书架失败，请稍后重试')
     } finally {
-      shelvePendingRef.current.delete(hit.bookId)
+      shelvePendingRef.current.delete(bookId)
     }
   }
 
@@ -224,7 +230,8 @@ export function BookSearchPanel() {
           </div>
           <div className="space-y-2">
             {phase.hits.map((h, i) => {
-              const onShelf = h.bookId !== '' && shelved.has(h.bookId)
+              const shelfable = isShelfableBookId(h.bookId)
+              const onShelf = shelfable && shelved.has(h.bookId)
               const shelveLabel = onShelf ? '已在书架' : '入架'
               return (
                 <div
@@ -249,7 +256,7 @@ export function BookSearchPanel() {
                     size="sm"
                     variant="outline"
                     className="mt-2 h-9 px-3 text-xs"
-                    disabled={onShelf || h.bookId === ''}
+                    disabled={onShelf || !shelfable}
                     aria-label={onShelf ? `《${h.title}》已在书架` : `将《${h.title}》入架`}
                     title={shelveLabel}
                     onClick={() => void onShelve(h)}
