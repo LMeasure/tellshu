@@ -6,8 +6,8 @@
  *   2. client 200 非 JSON（SPA 回退误接）→ 明确报错，null 不流进上层
  *   3. client 4xx/5xx → ApiRequestError 带 status
  *   4. 域层空 query 本地拦截，不发请求
- *   5. 域层成功映射（camelCase + e2eMs）
- *   6. 域层契约校验：meta.returned 不符 / 缺 title → bad_response
+ *   5. 域层成功映射（camelCase + e2eMs）；合法 book_id '7' 仍可入架
+ *   6. 域层契约校验：meta.returned 不符 / 缺 title / 缺或空白 book_id → bad_response
  *   7. 域层重试口径：5xx 共 3 次尝试后 server_error；503/400 不重试
  *   8. 域层超时与外部取消映射为 timeout
  * 运行：npx tsx scripts/test_discover.ts
@@ -17,7 +17,12 @@ import {
   DISCOVER_API_BASE,
 } from '../src/data/discoverClient'
 import { ApiRequestError } from '../src/data/asrClient'
-import { searchBooks, BookSearchError } from '../src/domain/discover/search'
+import {
+  searchBooks,
+  BookSearchError,
+  DISCOVER_SOURCE_SITE,
+  isShelfableBookId,
+} from '../src/domain/discover/search'
 
 type MockRes = { ok: boolean; status: number; body: unknown }
 
@@ -155,6 +160,11 @@ async function main() {
   assert(outcome.hits[0].chapterTitle === 'PART I' && outcome.hits[0].chunkIndex === 12,
     'snake_case → camelCase 映射（chapterTitle / chunkIndex）')
   assert(outcome.hits[0].bookId === '7', "bookId 映射自 book_id（okBody 夹具 book_id:'7'）")
+  assert(
+    isShelfableBookId(outcome.hits[0].bookId) &&
+      `discovered:${DISCOVER_SOURCE_SITE}:${outcome.hits[0].bookId}` === 'discovered:gutenberg:7',
+    "合法 book_id '7' 仍可入架（稳定主键 discovered:gutenberg:7）",
+  )
   assert(outcome.hits[0].chunkId === 101, 'chunkId 映射自 chunk_id')
   assert(outcome.e2eMs === 27.86, 'e2eMs 取自 latency.e2e_ms')
 
@@ -181,6 +191,51 @@ async function main() {
     badItem instanceof BookSearchError && (badItem as BookSearchError).kind === 'bad_response',
     '结果项缺 title → bad_response',
   )
+
+  // book_id：缺省 / null / 空串 / 纯空白都是 bad_response，不映射、不重试。
+  // 这些值不得进入 toBookHit，因此也不会被拼成 discovered:gutenberg:undefined。
+  async function assertBadBookId(bookId: unknown, label: string) {
+    resetScenario()
+    responder = async () => {
+      const b = okBody() as { results: Array<Record<string, unknown>> }
+      b.results[0].book_id = bookId
+      return { ok: true, status: 200, body: b }
+    }
+    const err = await expectThrows(() => searchBooks('x'))
+    assert(
+      err instanceof BookSearchError && (err as BookSearchError).kind === 'bad_response',
+      `${label} → bad_response`,
+    )
+    assert(calls.length === 1, `${label} 不重试、不进入映射（实际 ${calls.length} 次）`)
+  }
+  await assertBadBookId(undefined, '结果项缺少 book_id')
+  await assertBadBookId(null, '结果项 book_id 为 null')
+  await assertBadBookId('', '结果项 book_id 为空串')
+  await assertBadBookId('   ', '结果项 book_id 为纯空白')
+  await assertBadBookId('\t\n', '结果项 book_id 为空白字符')
+
+  resetScenario()
+  responder = async () => {
+    const b = okBody() as {
+      results: Array<Record<string, unknown>>
+      meta: { returned: number }
+    }
+    b.results.push({ ...b.results[0], book_id: '' })
+    b.meta.returned = b.results.length
+    return { ok: true, status: 200, body: b }
+  }
+  const mixed = await expectThrows(() => searchBooks('x'))
+  assert(
+    mixed instanceof BookSearchError && (mixed as BookSearchError).kind === 'bad_response',
+    '混有空 book_id 时整包 bad_response，不返回半截命中',
+  )
+
+  assert(isShelfableBookId(undefined) === false, 'undefined book_id 不可入架')
+  assert(isShelfableBookId(null) === false, 'null book_id 不可入架')
+  assert(isShelfableBookId('') === false, '空串 book_id 不可入架')
+  assert(isShelfableBookId('   ') === false, '纯空白 book_id 不可入架')
+  assert(isShelfableBookId(7) === false, '非字符串 book_id 不可入架')
+  assert(isShelfableBookId('7') === true, "合法 book_id '7' 通过入架闸门")
 
   // ---- 7. 域层：重试口径 ----
   resetScenario()
