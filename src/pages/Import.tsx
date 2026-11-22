@@ -37,6 +37,7 @@ import { ConvertPanel as ConvertImport } from '@/components/convert/ConvertPanel
 import { MediaTranscriptImport } from '@/components/transcript/MediaTranscriptImport'
 import { extractEpubBook, parseTxtBook } from '@/lib/epub'
 import { detectLanguage, countChars, type LangKind } from '@/lib/textLang'
+import { MaterialShelfButton } from '@/components/import/MaterialShelfButton'
 import {
   saveReading,
   getReadings,
@@ -73,7 +74,8 @@ function unitLabel(lang: LangKind, n: number): string {
 /**
  * 导入页（见优化计划）：个人中心 → 导入
  *  - 文本：粘贴**中文 / 英文 / 中英混排**文章（自动判断语言）
- *  - 书籍：上传 TXT / EPUB（真实提取文本，复用阅读器）；其余格式标注「敬请期待」
+ *  - 书籍：上传 TXT / EPUB（真实提取文本，复用阅读器）；其余格式标注「敬请期待」。
+ *    导入时不写 on_shelf，默认不进首页书架；在「我的素材」对书籍点「加入书架」后才上架。
  *  - 音频：上传 MP3 / M4A / M4B（文件存入本地，内联播放）
  * 全部本地解析/保存，完全离线。
  */
@@ -177,11 +179,12 @@ function ReadingRow({
               <div className="text-xs text-muted-foreground">
                 {LANG_LABEL[lang]} · {unitLabel(lang, doc.word_count)} ·{' '}
                 {doc.type === 'book' ? '书籍' : doc.type === 'transcript' ? '字幕' : '文章'}
-                {doc.on_shelf ? ' · 已在书架' : ''}
+                {doc.type === 'book' && doc.on_shelf ? ' · 已在书架' : ''}
               </div>
             )
           })()}
         </div>
+        <MaterialShelfButton doc={doc} onChanged={onChanged} />
         <button
           className="text-muted-foreground hover:text-destructive"
           onClick={(e) => {
