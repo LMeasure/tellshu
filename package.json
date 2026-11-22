@@ -13,7 +13,7 @@
     "test:data": "tsx scripts/test_data_client.ts",
     "test:storage": "tsx scripts/test_storage.ts",
     "test:services": "tsx scripts/test_services.ts",
-    "check:pwa": "python scripts/check_pwa.py",
+    "check:pwa": "python3 scripts/check_pwa.py",
     "check:data": "python scripts/verify_data.py --base http://localhost:4173/data/linguabase/v1/",
     "check:review": "tsx scripts/check_review_chain.ts http://127.0.0.1:4174",
     "check:vocab-ui": "tsx scripts/check_vocab_senses_ui.ts",

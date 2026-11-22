@@ -56,7 +56,7 @@ npm run build
 python3 scripts/check_pwa.py
 ```
 
-第四项必须写成 `python3 scripts/check_pwa.py`。只提供 `python3`、PATH 上没有 `python` 时，`python scripts/check_pwa.py` 在脚本启动前就以 127 退出。`scripts/check_pwa.py` 的 shebang 已是 `#!/usr/bin/env python3`，十项体检不因调用名改变。`npm run check:pwa` 仍调用 `python`（`package.json` 本轮不改），合并前以上面这一行为准，不要用它代替。
+第四项必须写成 `python3 scripts/check_pwa.py`。只提供 `python3`、PATH 上没有 `python` 时，`python scripts/check_pwa.py` 在脚本启动前就以 127 退出。`scripts/check_pwa.py` 的 shebang 已是 `#!/usr/bin/env python3`，十项体检不因调用名改变。`npm run check:pwa` 调用 `python3 scripts/check_pwa.py`，与上面这一行相同。
 
 改动 `server/` 时另在 `server/` 目录跑：
 ```bash
