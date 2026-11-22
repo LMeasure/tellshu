@@ -534,11 +534,25 @@ export async function getReading(id: string): Promise<ReadingDoc | undefined> {
   return T.readings.get(id)
 }
 
+/**
+ * 删除一篇阅读资料。
+ * 阅读主行、该 doc_id 的批注、该 doc_id 的背诵在同一笔 atomicBatch 里删除；
+ * 任一步失败则整笔回滚。书签在阅读行上，随主行消失。
+ * 不级联 transcripts / studyNotes：字幕素材的阅读 id 为 `t_<transcript.id>`，
+ * 删掉阅读行后，启动补齐仍可能按转写把阅读行写回来。
+ */
 export async function deleteReading(id: string): Promise<void> {
-  await T.readings.delete(id)
-  // 级联清理该素材的划线 / 想法（书签存在 doc 上，随 doc 一起消失）
-  const anns = await T.annotations.whereIndex('doc_id', id)
-  for (const a of anns) await T.annotations.delete(a.id)
+  await storage.atomicBatch(
+    ['readings', 'annotations', 'recitations'] as const,
+    async (ctx) => {
+      await ctx.readings.delete(id)
+      const anns = await ctx.annotations.whereIndex('doc_id', id)
+      for (const a of anns) await ctx.annotations.delete(a.id)
+      const recs = await ctx.recitations.whereIndex('doc_id', id)
+      for (const r of recs) await ctx.recitations.delete(r.id)
+      return { commit: true, result: undefined }
+    },
+  )
 }
 
 /** 更新阅读进度（最后阅读时间 + 滚动位置） */

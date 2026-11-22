@@ -323,6 +323,8 @@ export const memoryStorage: StorageService = {
           put: (value: StorageSchema[K]) =>
             t.put(value as unknown as Record<string, unknown>),
           addIfAbsent: (value: StorageSchema[K]) => memoryStorage.insertIfAbsent(name, value),
+          delete: (key: string | number) => t.delete(key),
+          whereIndex: (field: string, value: string | number) => t.whereIndex(field, value),
         }
       }
       try {

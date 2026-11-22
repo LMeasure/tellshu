@@ -8,9 +8,12 @@
  *
  * 幂等 / 覆盖口径（评审冻结）：
  *   · transcripts 主键 = ASR job_id，重复 done 覆盖同行（put），不追加；
- *   · studyNotes 按 transcript_id upsert——存在则原地重置（保留 id 与
- *     created_at），不存在才新建，杜绝孤儿记录；重生成会把 source 重置为
+ *     覆盖保留已有 owner、created_at，以及本次没有重写的其它已有字段；
+ *   · studyNotes 按 transcript_id upsert——存在则原地重置（保留 id、
+ *     created_at 与已有 owner），不存在才新建，杜绝孤儿记录；重生成会把 source 重置为
  *     ai_generated（用户修改会被覆盖，M2 UI 必须先弹确认）。
+ *   · 两条写路径的新行 owner 默认 'guest'。不回填存量，不升 Dexie 版本。
+ *     调用方多带的 owner（含空字符串）不参与写入，因此空字符串盖不掉已有非空 owner。
  *
  * 落库失败口径：调用方（transcribeAndSave）自行 try/catch——持久化是增强，
  * 不是转写成功的前提，失败不阻断结果展示。
@@ -57,9 +60,31 @@ export function toTranscriptRecord(t: Transcript, nowMs: number = Date.now()): T
   }
 }
 
+/**
+ * 覆盖写的 owner。与 saveReading 同一口径：`prev?.owner ?? 'guest'`。
+ * 只看已落库的 prev，不读本次入参上的 owner——空字符串因此不能盖掉已有非空值，
+ * 新行（没有 prev）得到 'guest'。
+ */
+function ownerForOverwrite(prevOwner: string | undefined): string {
+  return prevOwner ?? 'guest'
+}
+
 export async function saveTranscriptRecord(t: Transcript): Promise<TranscriptRecord> {
-  const record = toTranscriptRecord(t)
-  await storage.table('transcripts').put(record)
+  const table = storage.table('transcripts')
+  const prev = await table.get(t.id)
+  const fresh = toTranscriptRecord(t)
+  const record: TranscriptRecord = {
+    ...(prev ?? {}),
+    ...fresh,
+    created_at: prev?.created_at ?? fresh.created_at,
+    owner: ownerForOverwrite(prev?.owner),
+  }
+  // toTranscriptRecord 总会带上 fileName 键；未提供时值是 undefined，展开会把已有文件名抹掉。
+  if (t.fileName === undefined) {
+    if (prev?.fileName !== undefined) record.fileName = prev.fileName
+    else delete record.fileName
+  }
+  await table.put(record)
   return record
 }
 
@@ -188,8 +213,9 @@ function draftToRecord(draft: StudyNoteDraft, id: string, createdAt: number, now
 }
 
 /**
- * 按 transcript_id upsert：已存在则原地重置（保留 id / created_at），
- * 否则新建。绝不产生同一 transcript 的第二行。
+ * 按 transcript_id upsert：已存在则原地重置（保留 id / created_at / 已有 owner
+ * 以及本次草稿没重写的其它已有字段），否则新建。绝不产生同一 transcript 的第二行。
+ * 新行 owner 为 'guest'。不读取草稿上多带的 owner。
  */
 export async function upsertStudyNote(draft: StudyNoteDraft): Promise<StudyNoteRecord> {
   const table = storage.table('studyNotes')
@@ -197,11 +223,19 @@ export async function upsertStudyNote(draft: StudyNoteDraft): Promise<StudyNoteR
   const now = Date.now()
   if (existing.length > 0) {
     const prev = existing[0]
-    const record = draftToRecord(draft, prev.id, prev.created_at, now)
+    const fresh = draftToRecord(draft, prev.id, prev.created_at, now)
+    const record: StudyNoteRecord = {
+      ...prev,
+      ...fresh,
+      owner: ownerForOverwrite(prev.owner),
+    }
     await table.put(record)
     return record
   }
-  const record = draftToRecord(draft, newId(), now, now)
+  const record: StudyNoteRecord = {
+    ...draftToRecord(draft, newId(), now, now),
+    owner: 'guest',
+  }
   await table.put(record)
   return record
 }
