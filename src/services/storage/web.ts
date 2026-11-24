@@ -484,6 +484,8 @@ export const dexieStorage: StorageService = {
                 throw err
               }
             },
+            delete: (key: string | number) => svc.delete(key),
+            whereIndex: (field: string, value: string | number) => svc.whereIndex(field, value),
           }
         }
         const decision = await scope(ctx)

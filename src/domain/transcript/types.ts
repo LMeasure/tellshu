@@ -66,6 +66,11 @@ export interface TranscriptRecord {
   created_at: number
   /** 'asr'；后续学习稿可能另有来源 */
   source: string
+  /**
+   * 多端隔离（v12 已索引）。新写入默认 'guest'，覆盖保留已有 owner。
+   * 可选：存量行不在本轮回填，也不为此升 Dexie 版本。
+   */
+  owner?: string
 }
 
 /** studyNotes 表 · vocabulary 契约（与 LLM 输出一致，评审冻结 2026-10-18）。 */
@@ -119,4 +124,9 @@ export interface StudyNoteRecord {
   created_at: number
   updated_at: number
   source: StudyNoteSource
+  /**
+   * 多端隔离（v12 已索引）。新写入默认 'guest'，覆盖保留已有 owner。
+   * 可选：存量行不在本轮回填，也不为此升 Dexie 版本。
+   */
+  owner?: string
 }

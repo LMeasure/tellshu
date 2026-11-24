@@ -90,12 +90,20 @@ export class AtomicAbortError extends Error {
  * scope 必须是同步可判定的纯编排，业务纯函数不得带异步副作用。
  * ------------------------------------------------------------------ */
 
-/** 事务内的最小表句柄（不含索引查询：本轮原子链路只用主键读写） */
+/**
+ * 事务内的表句柄。scope 里只能 await 这些方法（它们返回底层事务内的 Promise）。
+ * delete / whereIndex 与主键读写一样必须走本句柄，不能改查事务外的 TableService。
+ */
 export interface BatchTable<T, K extends string | number> {
   get(key: K): Promise<T | undefined>
   put(value: T): Promise<void>
   /** 主键冲突返回 false 且不写；事务内同 key 串行，故检查可靠 */
   addIfAbsent(value: T): Promise<boolean>
+  delete(key: K): Promise<void>
+  /**
+   * 按已建索引等值查询。未建索引的字段抛错，与 TableService.whereIndex 同口径。
+   */
+  whereIndex(field: string, value: string | number): Promise<T[]>
 }
 
 export type BatchTables<K extends TableName> = {
