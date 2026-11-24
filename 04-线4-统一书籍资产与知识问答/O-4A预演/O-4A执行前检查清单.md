@@ -4,7 +4,7 @@
 > 性质：只读复核产物。本轮仅 Read 全部资产并静态核对，未启动 PG18、未执行任何 SQL/DDL/DML、未连接 R2、未使用真实凭证、未触碰生产/共享库。
 > 依据资产：02-O-4A-Runbook.md / 03-init-cleanup.sql / 03-cleanup.sql / 04-并发测试套件.py / 05-不变量测试映射.md / 06-证据采集规范.md / 07-网络与权限隔离.md / 11-静态验证.py 等。
 > 状态：会签 B2 已于 2026-11-20（Asia/Shanghai）批准隔离预演；会签 B1 同日冻结线4静态文稿第 11 轮。批准不是启动 PostgreSQL、执行 SQL、连接 R2 或使用真实凭证的许可。两处套件阻断曾挡住执行，现已在套件内修复；本清单修订仍未起库、未执行 SQL。
-> 纪律：证据六态 PASS/FAIL/NO_RUN/TIMEOUT/ABORT/PARTIAL；缺证据=ABORT，禁止默认 PASS；静态 351/351、49/49 或修复后的 51/51 都绝不当作真库验证。
+> 纪律：证据六态 PASS/FAIL/NO_RUN/TIMEOUT/ABORT/PARTIAL；缺证据=ABORT，禁止默认 PASS；静态 351/351、49/49 或修复后的 51/51、再补 T16 双 sid 修复后的 56/56 都绝不当作真库验证。
 
 ---
 
@@ -59,7 +59,7 @@
 - [ ] 授权变量：O4A_AUTHORIZED=1；6 个密码环境变量 COLLECTOR_PW / VERIFIER_PW / FIXTURE_PW / MONITOR_PW / APP_PW / ADMIN_PW（经 env/secret 注入，绝不向负责人索取、绝不入库/入聊天）。
 - [ ] 5 角色 DSN 环境变量：O4A_DSN_FIXTURE_ADMIN / O4A_DSN_COLLECTOR / O4A_DSN_VERIFIER / O4A_DSN_MONITOR / O4A_DSN_APP（host=127.0.0.1 port=5433 dbname=shutree_o4a user=<对应最小权限角色> password=...），缺一 → 套件退出码 92。
 - [ ] 运行载体：Runbook 命令为 POSIX shell 形态；Windows 原生下需改 pwsh（$env:NAME）或使用 WSL2/容器/独立 Linux；由 Orchestrator 确定，本清单按 Runbook 原样转述。
-- [ ] 静态验证先跑（无需 PG）：python 11-静态验证.py 当前结构断言为 PASS=51 FAIL=0（修复后新增调用形态检查；旧文稿中的 49/49 是第 11 轮历史计数）。此仅为结构断言，非 PG 实测。
+- [ ] 静态验证先跑（无需 PG）：python 11-静态验证.py 当前结构断言为 PASS=56 FAIL=0（51=PR#10 修屏障重叠/notifies 调用形态后新增；56=再补 T16 双 sid 数据准备与按声明校验 I1/I6 的 5 条防回归断言；49/49 是第 11 轮历史计数）。此仅为结构断言，非 PG 实测。
 
 ---
 
@@ -69,7 +69,7 @@
 
 ### 阶段 0 · 本地静态验证（无 PG）
 ~~~bash
-python 11-静态验证.py        # 当前 PASS=51 FAIL=0（结构断言，非 PG 实测；49/49 与 51/51 都不是真库证据）
+python 11-静态验证.py        # 当前 PASS=56 FAIL=0（结构断言，非 PG 实测；49/49、51/51、56/56 都不是真库证据）
 ~~~
 
 ### 阶段 1 · 起隔离实例（Runbook §2）
@@ -146,5 +146,5 @@ python 04-并发测试套件.py --out evidence/      # 自动建 evidence/<run_i
 - [x] 绝不连生产/共享库（不连 DB-A/DB-B，不建 cross_gen_*/backup_manifests/recovery_runs）。
 - [x] 绝不用真实 R2 凭证、绝不碰真实数据；fixture 全为合成值，由 psycopg 参数化生成，不硬编码于 .sql。
 - [x] 严格按资产执行：02-Runbook / 03-init-cleanup.sql（真可执行，勿手工去注释）/ 04-并发测试套件.py（psycopg3>=3.2.4）/ 03-cleanup.sql。
-- [x] 证据六态 PASS/FAIL/NO_RUN/TIMEOUT/ABORT/PARTIAL；缺证据=ABORT，禁止默认 PASS；静态 49/49 与修复后的 51/51 都不当作真库验证。
+- [x] 证据六态 PASS/FAIL/NO_RUN/TIMEOUT/ABORT/PARTIAL；缺证据=ABORT，禁止默认 PASS；静态 49/49 与修复后的 51/51、再补 T16 双 sid 修复后的 56/56 都不当作真库验证。
 - [x] 本轮（PREP）已遵守：未起 PG、未执行 SQL、未连 R2、未用真实凭证。

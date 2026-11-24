@@ -159,6 +159,22 @@ def _check_suite_calls(py: str) -> None:
     ck(sleep_calls == 0, "套件不调用 time.sleep")
 
 
+
+def _check_t16(py: str) -> None:
+    """T16 不同 sid 并发独立：双 sid 预置 + 双 sid 校验，防数据准备残留回归。"""
+    ck("sid_b" in py, "ScenarioCtx 含第二独立 sid（sid_b）")
+    ck(re.search(r"b_diff_sid[\s\S]{0,600}?sid=ctx\.sid_b", py) is not None,
+       "b_diff_sid 第二会话用 ctx.sid_b（非复用 ctx.sid）")
+    # T16 fixture 段：两个 sid 各有 record 与 consumption 预置
+    seg = py[py.find('sc.test_id == "T16"'):]
+    seg = seg[:seg.find("plans = sc.builder")]
+    ck(seg.count("fixture_records(") >= 2 and seg.count("fixture_consumption(") >= 2,
+       "T16 fixture 为两个 sid 各预置 record 与 consumption")
+    ck("sid=ctx.sid_b" in seg, "T16 fixture 使用 ctx.sid_b 预置第二组数据")
+    # 不变量按场景声明覆盖：T16 只校验 I1/I6，不去无差别检查全七项
+    ck('"I1":' in py and '"I6":' in py and "sid_override=ctx.sid_b" in py,
+       "T16 不变量按声明覆盖 I1/I6 并对双 sid 校验")
+
 def check_suite() -> None:
     py = read(SUITE)
     # 语法检查（tokenize 不做执行）
@@ -172,6 +188,7 @@ def check_suite() -> None:
     ck("3.2" in py, "声明 psycopg >= 3.2 版本依据")
     ck(re.search(r"\bconn\.wait\s*\(", py) is None, "不再使用误导性的 conn.wait() 等通知")
     _check_suite_calls(py)
+    _check_t16(py)
 
     for role in ("fixture_admin", "collector", "verifier", "monitor", "app"):
         ck(role in py, f"角色 DSN 分离：{role}")

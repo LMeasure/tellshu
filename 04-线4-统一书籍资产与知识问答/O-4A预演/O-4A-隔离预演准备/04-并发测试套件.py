@@ -330,6 +330,9 @@ class ScenarioCtx:
     outbox_id: uuid.UUID
     key_id: str
     payload_sha: str = "sha256:deadbeef"
+    # T16「不同 sid 并发独立」用第二个独立 sid；其余场景忽略此字段。
+    # 默认在构造时生成随机值，保证与 sid 不同且各 run 唯一。
+    sid_b: uuid.UUID = field(default_factory=uuid.uuid4)
 
 
 def fixture_reset(admin_conn, ctx: ScenarioCtx):
@@ -347,15 +350,16 @@ def fixture_reset(admin_conn, ctx: ScenarioCtx):
     admin_conn.commit()
 
 
-def fixture_consumption(admin_conn, ctx: ScenarioCtx, state: str = "created"):
+def fixture_consumption(admin_conn, ctx: ScenarioCtx, state: str = "created", sid=None):
     with admin_conn.cursor() as cur:
         cur.execute(
             "INSERT INTO shutree_sec.r2_evidence_consumption(evidence_snapshot_id,state) VALUES (%s,%s)",
-            (str(ctx.sid), state))
+            (str(sid if sid is not None else ctx.sid), state))
     admin_conn.commit()
 
 
-def fixture_records(admin_conn, ctx: ScenarioCtx, channels=CHANNELS):
+def fixture_records(admin_conn, ctx: ScenarioCtx, channels=CHANNELS, sid=None):
+    target_sid = str(sid if sid is not None else ctx.sid)
     with admin_conn.cursor() as cur:
         for ch in channels:
             cur.execute(
@@ -366,7 +370,7 @@ def fixture_records(admin_conn, ctx: ScenarioCtx, channels=CHANNELS):
                 "collector_key_id,collector_signature,payload,payload_sha256,signature,signature_key_id) "
                 "VALUES (%s,%s,'op',%s,'req',1,1,'w1','env','bkt','ck','v1',now(),'COLL','role',%s,"
                 "'k1','sig',%s,%s,'sig',%s)",
-                (str(ctx.sid), ch, str(ctx.outbox_id), COLLECTOR_ORG, b"\x00payload",
+                (target_sid, ch, str(ctx.outbox_id), COLLECTOR_ORG, b"\x00payload",
                  ctx.payload_sha, ctx.key_id))
     admin_conn.commit()
 
@@ -374,9 +378,9 @@ def fixture_records(admin_conn, ctx: ScenarioCtx, channels=CHANNELS):
 # ---------------------------------------------------------------------------
 # 不变量（I1~I7）
 # ---------------------------------------------------------------------------
-def check_invariants(conn, ctx: ScenarioCtx) -> dict:
+def check_invariants(conn, ctx: ScenarioCtx, sid_override=None) -> dict:
     out: dict[str, bool] = {}
-    sid = str(ctx.sid)
+    sid = str(sid_override if sid_override is not None else ctx.sid)
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM shutree_sec.r2_evidence_consumption WHERE evidence_snapshot_id=%s", (sid,))
         out["I1"] = (cur.fetchone()[0] == 1)
@@ -438,13 +442,14 @@ def _rec_sub():
             "WHERE evidence_snapshot_id=%(sid)s AND channel=%(ch)s)")
 
 
-def _verify(ctx, ch, verifier="V1", result="confirmed", vorg=VERIFIER_ORG, sha=None):
+def _verify(ctx, ch, verifier="V1", result="confirmed", vorg=VERIFIER_ORG, sha=None, sid=None):
     sql = ("INSERT INTO shutree_sec.r2_evidence_verification("
            "evidence_record_id,verifier_id,verifier_role,verifier_key_id,verifier_signature,"
            "verifier_org_unit,review_method,verification_result,verified_payload_sha256) "
            f"VALUES ({_rec_sub()},%(verifier)s,'role','k1','sig',%(vorg)s,'method',%(result)s,%(sha)s)")
-    return sql, {"sid": str(ctx.sid), "ch": ch, "verifier": verifier, "vorg": vorg,
-                 "result": result, "sha": sha or ctx.payload_sha}
+    # sid 覆盖仅用于 T16 的第二个独立 sid；默认 ctx.sid，其余场景零影响。
+    return sql, {"sid": str(sid if sid is not None else ctx.sid), "ch": ch, "verifier": verifier,
+                 "vorg": vorg, "result": result, "sha": sha or ctx.payload_sha}
 
 
 def b_serial(ctx):
@@ -573,10 +578,14 @@ def b_bad_channel(ctx):
 
 
 def b_diff_sid(ctx):
-    # 不同 sid 的并发独立：用同一 plan 但各会话自建 sid（见 runner 的 per_session_sid 开关）
-    s, p = _verify(ctx, "C1")
-    return [SessionPlan("verifier", [s], [p], barrier="all_arrived", label="sid-A"),
-            SessionPlan("verifier", [s], [p], barrier="all_arrived", label="sid-B")]
+    # T16「不同 sid 并发独立」：两个会话各复核各自 sid 的 C1。
+    # 两个 sid 各有独立 record(C1) 与 consumption(created)，由 runner fixture 预置。
+    # SQL-C 对 consumption 槽位行 FOR UPDATE：不同 sid = 不同行，故无共同锁、无等待。
+    # 每 sid 仅复核 1 个 channel（<6），触发器 created→verified 后不推进 consumable。
+    s_a, p_a = _verify(ctx, "C1", sid=ctx.sid)
+    s_b, p_b = _verify(ctx, "C1", sid=ctx.sid_b)
+    return [SessionPlan("verifier", [s_a], [p_a], barrier="all_arrived", label="sid-A"),
+            SessionPlan("verifier", [s_b], [p_b], barrier="all_arrived", label="sid-B")]
 
 
 # ---------------------------------------------------------------------------
@@ -954,7 +963,13 @@ def run_scenario(dsns, sc: ScenarioDef, run_dir: str, run_id: str):
     elif sc.test_id == "T15":
         fixture_consumption(admin, ctx, "created")
     elif sc.test_id == "T16":
-        pass  # 不同 sid 独立场景，见 b_diff_sid 说明
+        # 不同 sid 并发独立：两个 sid 各预置 1 条 record(C1)+consumption(created)。
+        # 缺 record 会让 verification 的 NOT NULL 外键 evidence_record_id 插入失败（旧残留）。
+        # 两 sid 各自独立行：SQL-C 的 FOR UPDATE 槽位不同，无共同锁、无等待。
+        fixture_records(admin, ctx, ["C1"], sid=ctx.sid)
+        fixture_consumption(admin, ctx, "created", sid=ctx.sid)
+        fixture_records(admin, ctx, ["C1"], sid=ctx.sid_b)
+        fixture_consumption(admin, ctx, "created", sid=ctx.sid_b)
     else:
         fixture_records(admin, ctx)
         fixture_consumption(admin, ctx, "created")
@@ -1009,7 +1024,18 @@ def run_scenario(dsns, sc: ScenarioDef, run_dir: str, run_id: str):
             "consumed_has_txid": bool(row[1]) if row else False,
             "consumed_has_xid": bool(row[2]) if row else False,
         }
-    ev.invariants = check_invariants(rconn, ctx)
+    if sc.test_id == "T16":
+        # T16 声明覆盖 I1/I6（见 05 映射 §3；I2 覆盖列表不含 T16）。
+        # 每 sid 仅复核 1 个 channel：全七项无差别检查会让 I2(=6) 恒 false，误判 FAIL。
+        # 按场景声明只校验 I1/I6，并对两个独立 sid 各自成立才算通过。
+        inv_a = check_invariants(rconn, ctx, sid_override=ctx.sid)
+        inv_b = check_invariants(rconn, ctx, sid_override=ctx.sid_b)
+        ev.invariants = {
+            "I1": bool(inv_a.get("I1")) and bool(inv_b.get("I1")),
+            "I6": bool(inv_a.get("I6")) and bool(inv_b.get("I6")),
+        }
+    else:
+        ev.invariants = check_invariants(rconn, ctx)
     rconn.close()
 
     ev.ended_at = datetime.now(timezone.utc).isoformat()
